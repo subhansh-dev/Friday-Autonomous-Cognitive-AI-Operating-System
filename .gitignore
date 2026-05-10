@@ -1,0 +1,191 @@
+# ========================
+# Friday — .gitignore
+# ========================
+ 
+# --- User config & secrets (API keys, Telegram token/ID, etc.) ---
+
+*.env
+.env
+.env.*
+secrets.py
+secrets.json
+secrets.yaml
+secrets.yml
+bot_token.*
+*token*
+*TOKEN*
+*_id.py
+*_id.txt
+ 
+# --- Virtual environment ---
+friday_env/
+venv/
+env/
+.venv/
+__pypackages__/
+ 
+# --- Python cache ---
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pdb
+ 
+# --- Runtime state ---
+health.json
+heartbeat.md
+brain/agi_state.json
+benchmarks/benchmark_results.json
+benchmarks/benchmark_v2_results.json
+data/proactive_patterns.json
+assets/tile_cache/
+
+# --- Dev/debug files ---
+_scan.py
+debug_check.py
+claudes.txt
+.commandcode/
+.opencode/
+ 
+# --- OS junk ---
+.DS_Store
+Thumbs.db
+desktop.ini
+ 
+# --- IDE files ---
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+ 
+# --- Build artifacts ---
+dist/
+build/
+*.egg-info/
+
+.claude/
+.sixth/
+friday_env/
+__pycache__/
+
+memory/long_term.json
+
+
+
+telegram_inbox.json
+telegram_outbox.json
+
+learnings.md
+
+logs/
+*.jsonl
+brain/neural_store.jsonbrain/cyber_sessions/
+data/
+brain/cyber_sessions/
+brain/benchmark_results/
+data/
+
+# ========================
+# Friday — .gitignore
+# ========================
+
+# --- User config & secrets (API keys, Telegram token/ID, etc.) ---
+*.env
+.env
+.env.*
+secrets.py
+secrets.json
+secrets.yaml
+secrets.yml
+bot_token.*
+*token*
+*TOKEN*
+*_id.py
+*_id.txt
+
+# --- Virtual environment ---
+friday_env/
+venv/
+env/
+.venv/
+__pypackages__/
+
+# --- Python cache ---
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pdb
+
+# --- Runtime state ---
+health.json
+heartbeat.md
+brain/agi_state.json
+brain/cyber_sessions/
+brain/benchmark_results/
+brain/neural_store.json
+brain/active_inference.json
+brain/analogy_data.json
+brain/causal_data.json
+brain/code_anomaly_db.json
+brain/code_chunks.json
+brain/code_failure_patterns.json
+brain/code_plan_history.json
+brain/code_reflections.json
+brain/codebase_graph.json
+brain/competition_data.json
+brain/curiosity.json
+brain/dream_journal.json
+brain/enhanced_wm_data.json
+brain/episodic_store.json
+brain/improvement_data.json
+brain/learning_data.json
+brain/meta_journal.json
+brain/modification_data.json
+brain/narrative_data.json
+brain/self_awareness.json
+brain/self_model.json
+brain/strategy_scores.json
+brain/vector_index.json
+brain/workspace_patterns.json
+brain/world_model_data.json
+benchmarks/benchmark_results.json
+benchmarks/benchmark_v2_results.json
+data/proactive_patterns.json
+data/
+assets/tile_cache/
+memory/long_term.json
+telegram_inbox.json
+telegram_outbox.json
+learnings.md
+logs/
+*.jsonl
+
+# --- Local settings ---
+settings/settings.local.json
+
+# --- Dev/debug files ---
+_scan.py
+debug_check.py
+claudes.txt
+.commandcode/
+.opencode/
+.claude/
+.sixth/
+
+# --- OS junk ---
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- IDE files ---
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# --- Build artifacts ---
+dist/
+build/
+*.egg-info/
+

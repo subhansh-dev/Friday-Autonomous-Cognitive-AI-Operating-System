@@ -1,0 +1,10 @@
+{
+    "primary_provider": "gemini",
+    "gemini_api_key": "",
+    "gemini_api_key2": "",
+    "os_system": "windows",
+    "camera_index": 0,
+
+    "telegram_bot_token": "",
+    "telegram_allowed_user":
+}

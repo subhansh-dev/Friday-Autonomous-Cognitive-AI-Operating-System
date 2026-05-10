@@ -857,6 +857,10 @@ Hand gesture-controlled music system with MediaPipe + LSTM.
 | 🤏 Pinch | Skip Back (-5s) |
 | 🖐️ Spread | Toggle Repeat |
 
+> 💡 Tip: Run collect_data.py then train.py to enable 
+> LSTM-powered gesture recognition for higher accuracy.
+> System works out of the box with heuristic detection.
+
 ---
 
 ## 📁 Project Structure
@@ -1346,7 +1350,7 @@ After May 2029, the code becomes available under Apache 2.0.
 
 - **Creator**: Subhansh
 - **GitHub**: [github.com/subhansh-dev](https://github.com/subhansh-dev)
-- **Issues**: [GitHub Issues](https://github.com/subhansh-dev/Friday/issues)
+- **Issues**: [GitHub Issues](https://github.com/subhansh-dev/Friday-Autonomous-Cognitive-AI-Operating-System/isues)
 
 <sub>no uni no cs major</sub>
 

@@ -197,6 +197,15 @@ class SoundFX:
         """Dual-hand rotate — servo whir."""
         self._play_sweep(250, 400, 0.15, 0.1)
 
+    def play_disintegrate(self):
+        """Object disintegration — shatter + energy dissipate + low rumble."""
+        # Shatter crack
+        self._play_multi_tone([(80, 1.0), (160, 0.8), (320, 0.5), (640, 0.3)], 0.15, 0.25)
+        # Energy dissipate sweep (falling)
+        self._play_sweep(800, 150, 0.4, 0.15)
+        # Low rumble tail
+        self._play_multi_tone([(60, 0.6), (90, 0.4), (120, 0.3)], 0.3, 0.1)
+
 
 class ARVisualFX:
     def __init__(self, width=1280, height=720):
@@ -1408,6 +1417,284 @@ class InteractionFX:
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
         glEnable(GL_DEPTH_TEST)
         glEnable(GL_LIGHTING)
+
+
+# ── Disintegration Effect (Pinch+Flick Delete) ───────────────────────
+
+@dataclass
+class Fragment:
+    """A single shard from a disintegrated object."""
+    vertices: np.ndarray          # (N, 3) local-space triangle verts
+    center: np.ndarray            # (3,) world-space center of fragment
+    velocity: np.ndarray          # (3,) world-space velocity
+    angular_velocity: np.ndarray  # (3,) rotation speed (rad/s)
+    rotation: np.ndarray          # (3,) current rotation (Euler)
+    color: Tuple[float, float, float, float]
+    alpha: float = 1.0
+    scale: float = 1.0
+    born: float = 0.0
+    lifetime: float = 2.5         # seconds before fully gone
+    trail: list = None            # list of past centers for trail
+
+    def __post_init__(self):
+        if self.trail is None:
+            self.trail = []
+
+
+class DisintegrationFX:
+    """Object disintegration effect — pinch + flick to shatter.
+
+    When an object is destroyed:
+    1. Its faces are split into fragments (clusters of triangles)
+    2. Each fragment explodes outward from the flick direction
+    3. Fragments rotate, decelerate, shrink, and fade
+    4. A trailing energy particle follows each fragment
+    5. The whole thing takes ~2.5s to fully dissolve
+
+    Like Tony crushing a hologram and watching it scatter.
+    """
+
+    _GRAVITY = np.array([0.0, 0.0, -0.3])   # gentle downward pull
+    _DRAG = 0.97                              # velocity decay per frame
+    _FRAGMENTS_PER_OBJECT = 20                # target fragment count
+    _TRAIL_LENGTH = 8
+
+    def __init__(self):
+        self.active_effects: List[List[Fragment]] = []
+
+    def trigger(self, obj: HoloObject, flick_dir: np.ndarray, flick_strength: float):
+        """Shatter an object into fragments along flick_dir."""
+        if len(obj.vertices) == 0 or len(obj.faces) == 0:
+            return
+
+        center = obj.get_center()
+        color = obj.color  # (r, g, b, a)
+        now = time.time()
+
+        # Determine how many fragments to create
+        n_faces = len(obj.faces)
+        n_frags = min(self._FRAGMENTS_PER_OBJECT, max(5, n_faces // 3))
+
+        # Shuffle faces and group into fragments
+        face_indices = list(range(n_faces))
+        random.shuffle(face_indices)
+        faces_per_frag = max(1, n_faces // n_frags)
+
+        fragments = []
+        for fi in range(0, n_faces, faces_per_frag):
+            chunk = face_indices[fi:fi + faces_per_frag]
+            if not chunk:
+                continue
+
+            # Collect vertices for this fragment
+            frag_verts = []
+            frag_center = np.zeros(3)
+            count = 0
+            for face_idx in chunk:
+                if face_idx < len(obj.faces):
+                    for vi in obj.faces[face_idx]:
+                        if vi < len(obj.vertices):
+                            frag_verts.append(obj.vertices[vi])
+                            frag_center += obj.vertices[vi]
+                            count += 1
+            if count == 0:
+                continue
+            frag_center /= count
+
+            if len(frag_verts) < 3:
+                continue
+
+            # Convert to local space (relative to fragment center)
+            local_verts = np.array(frag_verts, dtype=np.float32) - frag_center
+
+            # Velocity: flick direction + radial explosion + randomness
+            radial = frag_center - center
+            radial_norm = np.linalg.norm(radial)
+            if radial_norm > 1e-6:
+                radial = radial / radial_norm
+            else:
+                radial = np.random.randn(3)
+                radial /= np.linalg.norm(radial) + 1e-8
+
+            # Combine: flick direction (dominant) + radial scatter + random jitter
+            speed = flick_strength * random.uniform(0.6, 1.4)
+            jitter = np.random.randn(3) * 0.3
+            velocity = (flick_dir * 0.6 + radial * 0.3 + jitter) * speed
+            velocity = velocity / (np.linalg.norm(velocity) + 1e-8) * speed
+
+            # Random angular velocity
+            ang_vel = np.random.randn(3) * random.uniform(2.0, 6.0)
+            rot = np.random.randn(3) * math.pi
+
+            # Fragment color: slightly brighter/more saturated than original
+            cr = min(1.0, color[0] * 1.2 + 0.1)
+            cg = min(1.0, color[1] * 1.2 + 0.1)
+            cb = min(1.0, color[2] * 1.2 + 0.1)
+
+            fragments.append(Fragment(
+                vertices=local_verts,
+                center=frag_center.copy(),
+                velocity=velocity,
+                angular_velocity=ang_vel,
+                rotation=rot,
+                color=(cr, cg, cb, color[3] if len(color) > 3 else 0.7),
+                alpha=1.0,
+                scale=1.0,
+                born=now,
+                lifetime=random.uniform(1.8, 3.0),
+                trail=[frag_center.copy()],
+            ))
+
+        if fragments:
+            self.active_effects.append(fragments)
+
+    def update(self, dt: float):
+        """Update all active disintegration effects."""
+        now = time.time()
+        completed = []
+
+        for ei, fragments in enumerate(self.active_effects):
+            alive = []
+            for f in fragments:
+                age = now - f.born
+                if age > f.lifetime:
+                    continue
+
+                # Progress: 0 → 1 over lifetime
+                progress = age / f.lifetime
+
+                # Physics update
+                f.velocity += self._GRAVITY * dt
+                f.velocity *= self._DRAG
+                f.center += f.velocity * dt
+                f.rotation += f.angular_velocity * dt
+
+                # Decay angular velocity (fragments slow their spin)
+                f.angular_velocity *= 0.98
+
+                # Fade and shrink (accelerates towards end)
+                fade_curve = progress ** 0.7  # slow start, fast end
+                f.alpha = max(0.0, 1.0 - fade_curve)
+                f.scale = max(0.01, 1.0 - fade_curve * 0.8)
+
+                # Trail
+                f.trail.append(f.center.copy())
+                if len(f.trail) > self._TRAIL_LENGTH:
+                    f.trail.pop(0)
+
+                alive.append(f)
+
+            if alive:
+                self.active_effects[ei] = alive
+            else:
+                completed.append(ei)
+
+        # Remove completed effects (reverse order)
+        for i in sorted(completed, reverse=True):
+            self.active_effects.pop(i)
+
+    def draw(self):
+        """Render all active disintegration fragments in 3D."""
+        if not self.active_effects:
+            return
+
+        glDisable(GL_LIGHTING)
+        glEnable(GL_BLEND)
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE)
+        glEnable(GL_DEPTH_TEST)
+
+        now = time.time()
+
+        for fragments in self.active_effects:
+            for f in fragments:
+                if f.alpha < 0.01:
+                    continue
+
+                age = now - f.born
+                progress = age / f.lifetime
+
+                # ── Draw fragment triangles ──────────────────────────
+                # Apply transform: translate to center, rotate, scale
+                glPushMatrix()
+                glTranslatef(f.center[0], f.center[1], f.center[2])
+                glRotatef(math.degrees(f.rotation[0]), 1, 0, 0)
+                glRotatef(math.degrees(f.rotation[1]), 0, 1, 0)
+                glRotatef(math.degrees(f.rotation[2]), 0, 0, 1)
+                glScalef(f.scale, f.scale, f.scale)
+
+                # Outer glow layer (wide, additive)
+                c = f.color
+                glow_alpha = f.alpha * 0.15
+                glColor4f(c[0], c[1], c[2], glow_alpha)
+                glLineWidth(1.0)
+                glBegin(GL_TRIANGLES)
+                for i in range(0, len(f.vertices) - 2, 3):
+                    for j in range(3):
+                        v = f.vertices[i + j] * 1.3  # expanded
+                        glVertex3f(v[0], v[1], v[2])
+                glEnd()
+
+                # Core solid layer
+                core_alpha = f.alpha * 0.7
+                glColor4f(c[0], c[1], c[2], core_alpha)
+                glBegin(GL_TRIANGLES)
+                for i in range(0, len(f.vertices) - 2, 3):
+                    for j in range(3):
+                        v = f.vertices[i + j]
+                        glVertex3f(v[0], v[1], v[2])
+                glEnd()
+
+                # Bright edge wireframe
+                edge_alpha = f.alpha * 0.9
+                glColor4f(
+                    min(1.0, c[0] * 1.5),
+                    min(1.0, c[1] * 1.5),
+                    min(1.0, c[2] * 1.5),
+                    edge_alpha,
+                )
+                glPolygonMode(GL_FRONT_AND_BACK, GL_LINE)
+                glLineWidth(1.5)
+                glBegin(GL_TRIANGLES)
+                for i in range(0, len(f.vertices) - 2, 3):
+                    for j in range(3):
+                        v = f.vertices[i + j]
+                        glVertex3f(v[0], v[1], v[2])
+                glEnd()
+                glPolygonMode(GL_FRONT_AND_BACK, GL_FILL)
+
+                glPopMatrix()
+
+                # ── Draw energy trail ────────────────────────────────
+                if len(f.trail) > 1:
+                    for ti in range(1, len(f.trail)):
+                        t_progress = ti / len(f.trail)
+                        t_alpha = f.alpha * t_progress * 0.4
+                        t_pos = f.trail[ti]
+                        glColor4f(c[0], c[1], c[2], t_alpha)
+                        glPointSize(2.0 * t_progress)
+                        glBegin(GL_POINTS)
+                        glVertex3f(t_pos[0], t_pos[1], t_pos[2])
+                        glEnd()
+
+                # ── Core glow point at fragment center ───────────────
+                glow_alpha = f.alpha * 0.6
+                glColor4f(
+                    min(1.0, c[0] + 0.3),
+                    min(1.0, c[1] + 0.3),
+                    min(1.0, c[2] + 0.3),
+                    glow_alpha,
+                )
+                glPointSize(4.0 * f.scale)
+                glBegin(GL_POINTS)
+                glVertex3f(f.center[0], f.center[1], f.center[2])
+                glEnd()
+
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+        glEnable(GL_LIGHTING)
+
+    @property
+    def has_active(self) -> bool:
+        return len(self.active_effects) > 0
 
 
 # ── Sci-Fi UI Panels ─────────────────────────────────────────────────
@@ -2793,6 +3080,11 @@ class InputHandler:
         self._gesture_prev_pos = None
         # Dual-hand transform snapshot (for undo/commit)
         self._dual_obj_snapshot = None
+        # Flick-to-delete tracking
+        self._pinch_positions = deque(maxlen=10)  # recent positions during pinch
+        self._flick_cooldown = 0.0                 # prevent double-triggers
+        self._FLICK_VELOCITY_THRESHOLD = 2.5       # normalized units/sec
+        self._FLICK_COOLDOWN_TIME = 1.0            # seconds between flicks
 
     def handle_event(self, event):
         if event.type == MOUSEMOTION:
@@ -3113,8 +3405,44 @@ class InputHandler:
         if gesture == GestureController.PINCH:
             # ── Pinch: draw / create structures ──────────────────────
             # Like Tony drawing holograms with thumb+index
+
+            # Track positions for flick detection
+            now = time.time()
+            self._pinch_positions.append((nx, ny, now))
+
+            # Check for flick (fast movement while pinching on an object)
+            if self.renderer.selected and now - self._flick_cooldown > self._FLICK_COOLDOWN_TIME:
+                flick_dir, flick_speed = self._detect_flick()
+                if flick_speed > self._FLICK_VELOCITY_THRESHOLD:
+                    # FLICK! Delete the selected object with disintegration
+                    obj = self.renderer.selected
+                    if obj in self.renderer.objects:
+                        self.renderer.objects.remove(obj)
+                    # Convert 2D flick direction to 3D
+                    plane = self.renderer.projector.draw_plane
+                    if plane == "XY":
+                        fd3 = np.array([flick_dir[0], -flick_dir[1], 0])
+                    elif plane == "XZ":
+                        fd3 = np.array([flick_dir[0], 0, -flick_dir[1]])
+                    else:
+                        fd3 = np.array([0, flick_dir[0], -flick_dir[1]])
+                    fd3 /= (np.linalg.norm(fd3) + 1e-8)
+                    # Trigger disintegration effect
+                    if self._builder and hasattr(self._builder, 'disintegration_fx'):
+                        self._builder.disintegration_fx.trigger(obj, fd3, flick_speed * 0.5)
+                    if self._builder and hasattr(self._builder, 'sound_fx'):
+                        self._builder.sound_fx.play_disintegrate()
+                    self.renderer.selected = None
+                    self.state = self.STATE_IDLE
+                    self._flick_cooldown = now
+                    self._pinch_positions.clear()
+                    print(f"[HOLO] 💥 Disintegrated! ({len(self.renderer.objects)} remaining)")
+                    return
+
+            # Normal pinch: draw
             if self.state != self.STATE_DRAWING:
                 self._start_drawing()
+                self._pinch_positions.clear()
             else:
                 self._add_draw_point()
 
@@ -3253,6 +3581,41 @@ class InputHandler:
         self._gesture_prev_pos = None
         self._dual_obj_snapshot = None
         # Don't clear selected here — let OPEN gesture handle re-selection
+        self._pinch_positions.clear()
+
+    def _detect_flick(self) -> Tuple[Tuple[float, float], float]:
+        """Detect a flick gesture from recent pinch positions.
+
+        Returns (direction_xy, speed) where direction is normalized 2D
+        and speed is in normalized-units-per-second.
+        Returns ((0,0), 0.0) if no flick detected.
+        """
+        positions = list(self._pinch_positions)
+        if len(positions) < 4:
+            return (0.0, 0.0), 0.0
+
+        # Use last N positions (recent = most relevant)
+        recent = positions[-8:]
+        now = recent[-1][2]
+
+        # Calculate velocity over the recent window
+        dt = recent[-1][2] - recent[0][2]
+        if dt < 0.02:  # too short to measure
+            return (0.0, 0.0), 0.0
+
+        dx = recent[-1][0] - recent[0][0]
+        dy = recent[-1][1] - recent[0][1]
+        distance = math.hypot(dx, dy)
+        speed = distance / dt
+
+        if distance < 0.01:
+            return (0.0, 0.0), 0.0
+
+        # Normalize direction
+        dir_x = dx / distance
+        dir_y = dy / distance
+
+        return (dir_x, dir_y), speed
 
     def undo(self):
         if self.undo_stack:
@@ -3594,6 +3957,7 @@ class HoloBuilder:
         self.visual_fx = ARVisualFX(self.width, self.height)
         self.ui_panels = HoloUIPanels(self.width, self.height)
         self.interaction_fx = InteractionFX()
+        self.disintegration_fx = DisintegrationFX()
         self.clock = None
         self.fps = 0
         self.frame_count = 0
@@ -3635,6 +3999,7 @@ class HoloBuilder:
             if self.gesture_ctrl.enabled:
                 print("[HOLO] === IRON MAN GESTURE CONTROLS (AR mode) ===")
                 print("  Pinch (thumb+index)  → Draw / create structures")
+                print("  Pinch + Flick        → 💥 Disintegrate selected object")
                 print("  Fist (all closed)    → Grab & move selected")
                 print("  Point (index only)   → Precision select / aim")
                 print("  Peace (index+middle) → Scale selected")
@@ -3782,6 +4147,10 @@ class HoloBuilder:
             if self.gesture_ctrl.hand_pos:
                 self.interaction_fx.add_trail_point(self.gesture_ctrl.hand_pos)
 
+        # Update disintegration FX
+        if hasattr(self, 'disintegration_fx'):
+            self.disintegration_fx.update(dt)
+
         if self.ar_mode:
             self.ar.grab_frame()
             if self.gesture_ctrl.enabled and self.ar.frame is not None:
@@ -3815,6 +4184,10 @@ class HoloBuilder:
         # 3D interaction effects (spawn rings, selection aura, wisps)
         if hasattr(self, 'interaction_fx'):
             self.interaction_fx.draw_scene(selected_obj=self.renderer.selected)
+
+        # 3D disintegration fragments (shatter effect)
+        if hasattr(self, 'disintegration_fx'):
+            self.disintegration_fx.draw()
 
         if self.ar_mode:
             self._draw_gesture_cursor()
@@ -4454,11 +4827,12 @@ def holo_builder(parameters=None, player=None, **kwargs):
         _builder_instance._run_thread = threading.Thread(target=_builder_instance.run, daemon=True)
         _builder_instance._run_thread.start()
         return (
-            "FRIDAY Holo Builder v4.0 — Iron Man Edition online.\n"
+            "FRIDAY Holo Builder v4.1 — Iron Man Edition online.\n"
             "L-Click=draw | R-Click=orbit | M-Click=pan | Scroll=zoom\n"
             "Q=plane | Tab=AR mode | Alt+drag=move | G/S=move/scale\n"
             "Iron Man Gestures:\n"
             "  Pinch (thumb+index) = Draw / create structures\n"
+            "  Pinch + Flick       = 💥 Disintegrate object\n"
             "  Fist (all closed)   = Grab & move\n"
             "  Point (index only)  = Precision select\n"
             "  Peace (2 fingers)   = Scale\n"

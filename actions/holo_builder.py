@@ -487,17 +487,18 @@ class Projector:
         return near, d
 
 
-# ── Gesture Controller (Dual-Hand) ───────────────────────────────────
+# ── Gesture Controller (Dual-Hand) — Iron Man Edition ────────────────
 
 class GestureController:
     """Low-level hand landmark detector — tracks up to 2 hands via MediaPipe.
 
-    Features:
-    - EWMA position smoothing (alpha=0.4) for jitter reduction
+    Iron Man feel:
+    - Angle-based finger detection (works with tilted/rotated hands)
+    - Spring-physics position smoothing (responsive, no jitter)
     - Velocity tracking for motion prediction
     - Adaptive pinch threshold based on palm size
-    - Weighted gesture voting (recent frames count more)
-    - Confidence gating (gesture won't change on low-confidence frames)
+    - Weighted gesture voting (recent frames dominate)
+    - Fast hand-lost recovery (4 frames, not 12)
     """
     NONE = "none"
     OPEN = "open"
@@ -506,14 +507,15 @@ class GestureController:
     FIST = "fist"
     PEACE = "peace"
 
-    # Smoothing alpha for position (lower = smoother, more lag)
-    _POS_ALPHA = 0.45
+    # Spring physics for position smoothing
+    _SPRING_STIFFNESS = 18.0    # higher = snappier tracking
+    _SPRING_DAMPING = 0.75      # critical damping ratio
     # Smoothing alpha for velocity
-    _VEL_ALPHA = 0.3
+    _VEL_ALPHA = 0.4
     # Gesture vote: recent frames weighted exponentially
-    _VOTE_DECAY = 0.85
+    _VOTE_DECAY = 0.70          # lower = recent frames dominate more
     # Minimum confidence to allow gesture change
-    _CONFIDENCE_THRESHOLD = 0.55
+    _CONFIDENCE_THRESHOLD = 0.40
 
     def __init__(self, num_hands=2):
         self.enabled = False
@@ -527,12 +529,15 @@ class GestureController:
         self.prev_gestures = [self.NONE, self.NONE]
         self.gesture_confidence = [0.0, 0.0]
         self.pinch_dists = [1.0, 1.0]
-        self.palm_sizes = [0.1, 0.1]            # for adaptive thresholds
+        self.palm_sizes = [0.1, 0.1]
         self.landmarks = [None, None]
-        self._gesture_buffers = [deque(maxlen=9), deque(maxlen=9)]
+        self._gesture_buffers = [deque(maxlen=7), deque(maxlen=7)]
         self._hand_lost_frames = [0, 0]
-        self._hand_lost_limit = 12              # was 10 — more tolerant
+        self._hand_lost_limit = 4               # fast recovery
         self._last_process_time = [0.0, 0.0]
+        # Spring physics state per hand
+        self._spring_pos = [None, None]         # current spring position
+        self._spring_vel = [(0.0, 0.0), (0.0, 0.0)]
         # Backward-compat single-hand properties
         self.hand_pos = None
         self.gesture = self.NONE
@@ -548,9 +553,9 @@ class GestureController:
                 base_options=BaseOptions(model_asset_path=_HAND_MODEL),
                 running_mode=RunningMode.VIDEO,
                 num_hands=num_hands,
-                min_hand_detection_confidence=0.6,
-                min_hand_presence_confidence=0.5,
-                min_tracking_confidence=0.5,
+                min_hand_detection_confidence=0.5,
+                min_hand_presence_confidence=0.4,
+                min_tracking_confidence=0.4,
             )
             self.landmarker = HandLandmarker.create_from_options(opts)
             self.enabled = True
@@ -566,63 +571,117 @@ class GestureController:
         return math.hypot(mx - wx, my - wy)
 
     @staticmethod
-    def _classify(lm, palm_size=0.1):
+    def _finger_angle(lm, tip_idx, pip_idx, mcp_idx):
+        """Compute angle at PIP joint — robust to hand tilt/rotation.
+
+        Returns angle in radians. 0 = fully extended, pi = fully curled.
+        """
+        # Vector from PIP to MCP (towards wrist)
+        v1_x = lm[mcp_idx].x - lm[pip_idx].x
+        v1_y = lm[mcp_idx].y - lm[pip_idx].y
+        v1_z = lm[mcp_idx].z - lm[pip_idx].z
+        # Vector from PIP to tip (towards fingertip)
+        v2_x = lm[tip_idx].x - lm[pip_idx].x
+        v2_y = lm[tip_idx].y - lm[pip_idx].y
+        v2_z = lm[tip_idx].z - lm[pip_idx].z
+        # Dot product → cos(angle)
+        dot = v1_x * v2_x + v1_y * v2_y + v1_z * v2_z
+        mag1 = math.sqrt(v1_x**2 + v1_y**2 + v1_z**2)
+        mag2 = math.sqrt(v2_x**2 + v2_y**2 + v2_z**2)
+        if mag1 < 1e-6 or mag2 < 1e-6:
+            return math.pi  # assume curled if degenerate
+        cos_a = max(-1.0, min(1.0, dot / (mag1 * mag2)))
+        return math.acos(cos_a)
+
+    @classmethod
+    def _classify(cls, lm, palm_size=0.1):
         """Classify a single hand's gesture from landmarks.
 
-        Uses adaptive pinch threshold scaled by palm size.
+        Uses angle-based finger detection — works with tilted/rotated hands.
         """
-        index_up = lm[8].y < lm[6].y
-        middle_up = lm[12].y < lm[10].y
-        ring_up = lm[16].y < lm[14].y
-        pinky_up = lm[20].y < lm[18].y
-        ext = sum([index_up, middle_up, ring_up, pinky_up])
-        pinch_dist = math.hypot(lm[4].x - lm[8].x, lm[4].y - lm[8].y)
+        # Finger angles: 0 = extended, ~pi = curled
+        # Landmark indices: tip=8, PIP=6, MCP=5 for index finger
+        index_angle = cls._finger_angle(lm, 8, 6, 5)
+        middle_angle = cls._finger_angle(lm, 12, 10, 9)
+        ring_angle = cls._finger_angle(lm, 16, 14, 13)
+        pinky_angle = cls._finger_angle(lm, 20, 18, 17)
 
-        # Adaptive threshold: scale with palm size
-        # Base 0.055 calibrated for ~0.15 palm size
-        pinch_threshold = 0.055 * (palm_size / 0.15)
-        pinch_threshold = max(0.03, min(0.09, pinch_threshold))
+        # Threshold: < 1.2 rad (~69°) = extended, > 1.5 rad (~86°) = curled
+        _EXT = 1.2
+        _CURL = 1.5
+        index_up = index_angle < _EXT
+        middle_up = middle_angle < _EXT
+        ring_up = ring_angle < _EXT
+        pinky_up = pinky_angle < _EXT
+        ext = sum([index_up, middle_up, ring_up, pinky_up])
+
+        # Thumb: use distance from tip to index MCP (more robust than angle)
+        pinch_dist = math.hypot(lm[4].x - lm[8].x, lm[4].y - lm[8].y,
+                                lm[4].z - lm[8].z)
+
+        # Adaptive pinch threshold
+        pinch_threshold = 0.07 * (palm_size / 0.15)
+        pinch_threshold = max(0.04, min(0.12, pinch_threshold))
 
         if ext == 0:
             return "fist", pinch_dist
         elif pinch_dist < pinch_threshold and ext >= 1:
             return "pinch", pinch_dist
-        elif index_up and middle_up and ext == 2:
+        elif index_up and middle_up and not ring_up and not pinky_up:
             return "peace", pinch_dist
-        elif index_up and ext == 1:
+        elif index_up and not middle_up and not ring_up and not pinky_up:
             return "point", pinch_dist
         elif ext >= 3:
             return "open", pinch_dist
         return "open", pinch_dist
 
     def _smooth_position(self, idx, raw_x, raw_y):
-        """EWMA position smoothing with velocity tracking."""
-        prev = self.hand_positions[idx]
+        """Spring-physics position smoothing — Iron Man feel.
+
+        Uses a damped spring system: responsive on fast movements,
+        smooth on slow movements, no jitter.
+        """
         now = time.time()
         dt = max(0.001, now - self._last_process_time[idx])
         self._last_process_time[idx] = now
 
-        if prev is None:
-            # First frame — no smoothing
+        if self._spring_pos[idx] is None:
+            # First frame — snap to position
+            self._spring_pos[idx] = (raw_x, raw_y)
+            self._spring_vel[idx] = (0.0, 0.0)
             self.hand_velocities[idx] = (0.0, 0.0)
             return raw_x, raw_y
 
-        px, py = prev
-        alpha = self._POS_ALPHA
-        sx = px + alpha * (raw_x - px)
-        sy = py + alpha * (raw_y - py)
+        sx, sy = self._spring_pos[idx]
+        vx, vy = self._spring_vel[idx]
 
-        # Velocity (smoothed)
-        vx = (raw_x - px) / dt
-        vy = (raw_y - py) / dt
+        # Spring force: F = -k * (pos - target) - c * velocity
+        k = self._SPRING_STIFFNESS
+        c = 2.0 * self._SPRING_DAMPING * math.sqrt(k)  # critical damping
+
+        fx = -k * (sx - raw_x) - c * vx
+        fy = -k * (sy - raw_y) - c * vy
+
+        # Semi-implicit Euler integration
+        vx_new = vx + fx * dt
+        vy_new = vy + fy * dt
+        sx_new = sx + vx_new * dt
+        sy_new = sy + vy_new * dt
+
+        self._spring_pos[idx] = (sx_new, sy_new)
+        self._spring_vel[idx] = (vx_new, vy_new)
+
+        # Track velocity for prediction (smoothed)
+        raw_vx = (raw_x - sx) / dt if dt > 0 else 0.0
+        raw_vy = (raw_y - sy) / dt if dt > 0 else 0.0
         va = self._VEL_ALPHA
         ovx, ovy = self.hand_velocities[idx]
         self.hand_velocities[idx] = (
-            ovx + va * (vx - ovx),
-            ovy + va * (vy - ovy),
+            ovx + va * (raw_vx - ovx),
+            ovy + va * (raw_vy - ovy),
         )
 
-        return sx, sy
+        return sx_new, sy_new
 
     def _weighted_vote(self, idx):
         """Weighted gesture voting — recent frames count more.
@@ -636,7 +695,6 @@ class GestureController:
         scores = {}
         n = len(buf)
         for i, g in enumerate(buf):
-            # Exponential weight: most recent = highest
             weight = self._VOTE_DECAY ** (n - 1 - i)
             scores[g] = scores.get(g, 0.0) + weight
 
@@ -666,7 +724,7 @@ class GestureController:
                     raw_x, raw_y = lm[8].x, lm[8].y
                     self.hand_positions_raw[idx] = (raw_x, raw_y)
 
-                    # Smoothed position
+                    # Spring-physics smoothed position
                     sx, sy = self._smooth_position(idx, raw_x, raw_y)
                     self.hand_positions[idx] = (sx, sy)
 
@@ -674,7 +732,7 @@ class GestureController:
                     ps = self._palm_size(lm)
                     self.palm_sizes[idx] = ps
 
-                    # Classify gesture with adaptive threshold
+                    # Classify gesture with angle-based detection
                     raw_gesture, pd = self._classify(lm, ps)
                     self.pinch_dists[idx] = pd
                     self._gesture_buffers[idx].append(raw_gesture)
@@ -683,14 +741,13 @@ class GestureController:
                     voted, confidence = self._weighted_vote(idx)
                     self.gesture_confidence[idx] = confidence
 
-                    # Only change gesture if confidence is high enough
+                    # Update gesture with confidence gating
                     self.prev_gestures[idx] = self.gestures[idx]
                     if confidence >= self._CONFIDENCE_THRESHOLD:
                         if voted != self.gestures[idx]:
                             self.gestures[idx] = voted
-                    # else: keep previous gesture (prevents flicker)
 
-            # Handle lost hands
+            # Handle lost hands — fast recovery (4 frames)
             for idx in range(self.num_hands):
                 if idx not in detected:
                     self._hand_lost_frames[idx] += 1
@@ -702,6 +759,8 @@ class GestureController:
                         self.landmarks[idx] = None
                         self._gesture_buffers[idx].clear()
                         self.hand_velocities[idx] = (0.0, 0.0)
+                        self._spring_pos[idx] = None
+                        self._spring_vel[idx] = (0.0, 0.0)
 
             # Backward-compat: primary hand = index 0
             self.hand_pos = self.hand_positions[0]
@@ -710,7 +769,6 @@ class GestureController:
             self.pinch_dist = self.pinch_dists[0]
             self._last_lm = self.landmarks[0]
         except Exception as e:
-            # Log but don't crash — gesture tracking is best-effort
             if not hasattr(self, '_process_err_count'):
                 self._process_err_count = 0
             self._process_err_count += 1
@@ -746,43 +804,37 @@ class GestureController:
         self.enabled = False
 
 
-# ── Dual-Hand Gesture Manager ────────────────────────────────────────
+# ── Dual-Hand Gesture Manager — Iron Man Edition ─────────────────────
 
 class DualHandGestureManager:
-    """State machine for two-hand spatial interactions.
+    """State machine for two-hand spatial interactions — Iron Man feel.
 
     States:
         IDLE        — no dual-hand interaction
-        SCALE       — spreading/closing hands (distance-based)
-        ROTATE      — rotating hand pair (angle-based)
-        REPOSITION  — both fists moving together
-        TRANSITION  — brief debounce between states
+        SCALE       — spreading/closing hands (distance-based) — zoom hologram
+        ROTATE      — rotating hand pair (angle-based) — spin 3D model
+        REPOSITION  — both fists moving together — pan the scene
 
-    Inputs from GestureController:
-        - hand_positions[0], hand_positions[1]  (normalised screen coords)
-        - gestures[0], gestures[1]
-        - landmarks[0], landmarks[1]
+    Gesture pairs (Iron Man mapping):
+        Both fists           → REPOSITION (grab & move scene)
+        Both open/pinch      → SCALE (spread = zoom in, close = zoom out)
+        Both point           → ROTATE (twist to spin model)
+        One fist + one open  → ROTATE (asymmetric grab & twist)
     """
 
     STATE_IDLE = "idle"
     STATE_SCALE = "scale"
     STATE_ROTATE = "rotate"
     STATE_REPOSITION = "reposition"
-    STATE_TRANSITION = "transition"
 
-    # Minimum distance change (normalised) to register as scale
-    _SCALE_THRESHOLD = 0.012
-    # Minimum angle change (radians) to register as rotation
-    _ROTATE_THRESHOLD = 0.04     # ~2.3 degrees
-    # Minimum combined movement to register as reposition
-    _MOVE_THRESHOLD = 0.008
-    # Debounce frames between state changes
-    _DEBOUNCE_FRAMES = 5
-    # Smoothing factor (0 = no smoothing, 1 = no update)
-    _SMOOTH_ALPHA = 0.35
-    # Confidence: how many of last N frames must agree on gesture
-    _CONFIDENCE_WINDOW = 5
-    _CONFIDENCE_MIN = 3
+    # Thresholds — tuned for Iron Man responsiveness
+    _SCALE_THRESHOLD = 0.006
+    _ROTATE_THRESHOLD = 0.02     # ~1.1 degrees
+    _MOVE_THRESHOLD = 0.004
+    _DEBOUNCE_FRAMES = 2         # fast transitions
+    _SMOOTH_ALPHA = 0.45         # less smoothing = more responsive
+    _CONFIDENCE_WINDOW = 4
+    _CONFIDENCE_MIN = 2          # only 2 of 4 frames need to agree
 
     def __init__(self):
         self.state = self.STATE_IDLE
@@ -791,8 +843,8 @@ class DualHandGestureManager:
         self._debounce_target = self.STATE_IDLE
 
         # Anchors (normalised screen positions)
-        self._anchor_l = None      # left hand anchor
-        self._anchor_r = None      # right hand anchor
+        self._anchor_l = None
+        self._anchor_r = None
         self._prev_anchor_l = None
         self._prev_anchor_r = None
 
@@ -803,7 +855,7 @@ class DualHandGestureManager:
 
         # Smoothed outputs
         self.scale_factor = 1.0
-        self.rotate_delta = 0.0     # radians
+        self.rotate_delta = 0.0
         self.move_delta = np.array([0.0, 0.0])
 
         # Velocity stabilisation
@@ -816,26 +868,20 @@ class DualHandGestureManager:
                                  deque(maxlen=self._CONFIDENCE_WINDOW)]
 
         # Frame-level state
-        self.active = False         # True when dual-hand interaction is live
+        self.active = False
         self._frame_count = 0
 
-    # Dead zone: movements smaller than this (normalised) are ignored
-    _DEAD_ZONE = 0.003
-
     def update(self, gc: GestureController):
-        """Process one frame of gesture data.  Call every frame."""
+        """Process one frame of gesture data. Call every frame."""
         self._frame_count += 1
-        # Use smoothed positions (already EWMA-filtered in GestureController)
         h0 = gc.hand_positions[0]
         h1 = gc.hand_positions[1]
         g0 = gc.gestures[0]
         g1 = gc.gestures[1]
 
-        # Record gesture history for confidence
         self._gesture_history[0].append(g0)
         self._gesture_history[1].append(g1)
 
-        # Both hands must be detected
         if h0 is None or h1 is None:
             self._end_interaction()
             return
@@ -848,18 +894,16 @@ class DualHandGestureManager:
             left_pos, right_pos = h1, h0
             left_g, right_g = g1, g0
 
-        # Determine intended interaction from gesture pair
         intended = self._classify_pair(left_g, right_g)
         if intended is None:
             self._end_interaction()
             return
 
-        # Confidence filter: require consistent gestures over recent frames
         if not self._check_confidence():
             self._end_interaction()
             return
 
-        # Debounce state transitions
+        # Debounce state transitions — fast for Iron Man feel
         if intended != self.state:
             if self._debounce_counter == 0:
                 self._debounce_target = intended
@@ -867,18 +911,16 @@ class DualHandGestureManager:
             elif self._debounce_target == intended:
                 self._debounce_counter += 1
             else:
-                # Different intent arrived — reset debounce
                 self._debounce_target = intended
                 self._debounce_counter = 1
 
             if self._debounce_counter >= self._DEBOUNCE_FRAMES:
                 self._transition_to(intended, left_pos, right_pos)
             else:
-                return  # still debouncing — hold current state
+                return
         else:
             self._debounce_counter = 0
 
-        # Apply interaction based on current state
         if self.state == self.STATE_SCALE:
             self._apply_scale(left_pos, right_pos)
         elif self.state == self.STATE_ROTATE:
@@ -886,20 +928,23 @@ class DualHandGestureManager:
         elif self.state == self.STATE_REPOSITION:
             self._apply_reposition(left_pos, right_pos)
 
-        # Store for next frame
         self._prev_anchor_l = left_pos
         self._prev_anchor_r = right_pos
         self.active = self.state != self.STATE_IDLE
 
     def _classify_pair(self, left_g, right_g):
-        """Determine interaction type from a pair of gestures."""
-        # Both fists → reposition
+        """Determine interaction type from a pair of gestures.
+
+        Iron Man mapping:
+        - Both fists → reposition (grab & move)
+        - Both open/pinch → scale (spread/close)
+        - Both point → rotate
+        - Fist + open/pinch → rotate (asymmetric twist)
+        """
         if left_g == "fist" and right_g == "fist":
             return self.STATE_REPOSITION
-        # Both open or both pinch → scale (spread/close)
         if left_g in ("open", "pinch") and right_g in ("open", "pinch"):
             return self.STATE_SCALE
-        # One fist + one open/pinch, or both pointing → rotate
         if left_g == "point" and right_g == "point":
             return self.STATE_ROTATE
         if (left_g == "fist" and right_g in ("open", "pinch")) or \
@@ -908,13 +953,12 @@ class DualHandGestureManager:
         return None
 
     def _check_confidence(self):
-        """Require that recent gesture frames are consistent."""
+        """Require consistent gestures — but be fast about it."""
         for hand_idx in range(2):
             buf = list(self._gesture_history[hand_idx])
             if len(buf) < self._CONFIDENCE_MIN:
                 return False
             recent = buf[-self._CONFIDENCE_WINDOW:]
-            # At least CONFIDENCE_MIN frames must show a valid gesture
             valid = sum(1 for g in recent if g not in ("none",))
             if valid < self._CONFIDENCE_MIN:
                 return False
@@ -926,7 +970,6 @@ class DualHandGestureManager:
         self.state = new_state
         self._debounce_counter = 0
 
-        # Capture baseline
         dx = right_pos[0] - left_pos[0]
         dy = right_pos[1] - left_pos[1]
         self._baseline_dist = math.hypot(dx, dy)
@@ -934,7 +977,6 @@ class DualHandGestureManager:
         self._baseline_mid = ((left_pos[0] + right_pos[0]) / 2,
                               (left_pos[1] + right_pos[1]) / 2)
 
-        # Reset deltas
         self.scale_factor = 1.0
         self.rotate_delta = 0.0
         self.move_delta = np.array([0.0, 0.0])
@@ -953,10 +995,10 @@ class DualHandGestureManager:
             self.move_delta = np.array([0.0, 0.0])
             self._debounce_counter = 0
 
-    # ── Interaction math ──────────────────────────────────────────────
+    # ── Interaction math (smoothed, no dead zone) ─────────────────────
 
     def _apply_scale(self, left_pos, right_pos):
-        """Compute scale factor from hand distance delta."""
+        """Compute scale factor from hand distance delta — zoom hologram."""
         dx = right_pos[0] - left_pos[0]
         dy = right_pos[1] - left_pos[1]
         current_dist = math.hypot(dx, dy)
@@ -964,39 +1006,29 @@ class DualHandGestureManager:
             self._baseline_dist = current_dist
             return
         raw = current_dist / self._baseline_dist
-        # Dead zone: ignore tiny changes
-        if abs(raw - self.scale_factor) < self._DEAD_ZONE:
-            return
-        # Temporal smoothing
+        # Smooth but responsive
         self._scale_velocity = (self._SMOOTH_ALPHA * (raw - self.scale_factor) +
                                 (1 - self._SMOOTH_ALPHA) * self._scale_velocity)
         self.scale_factor += self._scale_velocity
-        # Clamp to sane range
-        self.scale_factor = max(0.1, min(10.0, self.scale_factor))
+        self.scale_factor = max(0.05, min(20.0, self.scale_factor))
 
     def _apply_rotate(self, left_pos, right_pos):
-        """Compute rotation angle from hand pair angle delta."""
+        """Compute rotation angle from hand pair angle delta — spin model."""
         dx = right_pos[0] - left_pos[0]
         dy = right_pos[1] - left_pos[1]
         current_angle = math.atan2(dy, dx)
         delta = current_angle - self._baseline_angle
-        # Normalise to [-pi, pi]
         while delta > math.pi:
             delta -= 2 * math.pi
         while delta < -math.pi:
             delta += 2 * math.pi
-        # Dead zone: ignore tiny rotations
-        if abs(delta - self.rotate_delta) < self._DEAD_ZONE * 2:
-            return
-        # Temporal smoothing
         self._rotate_velocity = (self._SMOOTH_ALPHA * (delta - self.rotate_delta) +
                                  (1 - self._SMOOTH_ALPHA) * self._rotate_velocity)
         self.rotate_delta += self._rotate_velocity
-        # Clamp
         self.rotate_delta = max(-math.pi, min(math.pi, self.rotate_delta))
 
     def _apply_reposition(self, left_pos, right_pos):
-        """Compute movement delta from midpoint shift."""
+        """Compute movement delta from midpoint shift — pan scene."""
         mid = ((left_pos[0] + right_pos[0]) / 2,
                (left_pos[1] + right_pos[1]) / 2)
         if self._baseline_mid is None:
@@ -1004,11 +1036,7 @@ class DualHandGestureManager:
             return
         raw_dx = mid[0] - self._baseline_mid[0]
         raw_dy = mid[1] - self._baseline_mid[1]
-        # Dead zone: ignore tiny movements
-        if abs(raw_dx) < self._DEAD_ZONE and abs(raw_dy) < self._DEAD_ZONE:
-            return
         raw = np.array([raw_dx, raw_dy])
-        # Temporal smoothing
         self._move_velocity = (self._SMOOTH_ALPHA * (raw - self.move_delta) +
                                (1 - self._SMOOTH_ALPHA) * self._move_velocity)
         self.move_delta += self._move_velocity
@@ -2853,7 +2881,11 @@ class InputHandler:
         return None
 
     def update_gesture(self):
-        """Process gesture input — single-hand AND dual-hand."""
+        """Process gesture input — single-hand AND dual-hand.
+
+        Iron Man feel: gestures are immediate, no first-frame kill.
+        Gesture changes seamlessly transition between states.
+        """
         g = self.gesture_ctrl
         dh = self.dual_hand
         if not g.enabled:
@@ -2867,7 +2899,7 @@ class InputHandler:
             self._apply_dual_hand(dh)
             return
 
-        # ── Single-hand path (original logic) ────────────────────────
+        # ── Single-hand path ─────────────────────────────────────────
         # If dual-hand was active and just ended, commit the transform
         if dh is not None and dh.state != DualHandGestureManager.STATE_IDLE:
             self._commit_dual_transform()
@@ -2886,8 +2918,15 @@ class InputHandler:
 
         gesture = g.gesture
 
+        # On gesture change: end the OLD action, then IMMEDIATELY start the new one.
+        # No wasted frame — Iron Man feel.
         if g.just_changed:
-            self._end_gesture_action()
+            if self.state == self.STATE_DRAWING and gesture != GestureController.PINCH:
+                self._finish_drawing()
+            elif self.state in (self.STATE_MOVE, self.STATE_SCALE):
+                self.state = self.STATE_IDLE
+            self._gesture_prev_pos = None
+            self._dual_obj_snapshot = None
 
         if gesture == GestureController.PINCH:
             if self.state != self.STATE_DRAWING:
@@ -2896,23 +2935,18 @@ class InputHandler:
                 self._add_draw_point()
 
         elif gesture == GestureController.FIST:
-            # Always keep prev_pos tracked so deltas are correct
             prev = self._gesture_prev_pos
             self._gesture_prev_pos = (mx, my)
 
             if self.state != self.STATE_MOVE:
-                # First fist frame — try to grab an object
                 obj = self._pick_object(mx, my)
                 if obj is not None:
                     self.renderer.selected = obj
                     self.state = self.STATE_MOVE
                 else:
-                    # Nothing under cursor yet — enter MOVE state anyway
-                    # so we can grab when the hand moves over an object
                     self.state = self.STATE_MOVE
                     self.renderer.selected = None
             else:
-                # Already in MOVE — try to pick if nothing selected (magnetic grab)
                 if self.renderer.selected is None:
                     obj = self._pick_object(mx, my)
                     if obj is not None:
@@ -2922,6 +2956,12 @@ class InputHandler:
                     dx = mx - prev[0]
                     dy = my - prev[1]
                     self._do_move(dx, dy, speed=0.006)
+
+        elif gesture == GestureController.POINT:
+            # Precision select — like Tony pointing at UI elements
+            obj = self._pick_object(mx, my)
+            if obj is not None:
+                self.renderer.selected = obj
 
         elif gesture == GestureController.PEACE:
             if self.state != self.STATE_SCALE:

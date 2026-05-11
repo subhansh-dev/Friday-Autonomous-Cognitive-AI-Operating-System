@@ -1107,6 +1107,9 @@ Send a message to your bot on Telegram and FRIDAY will respond. You can also tel
 - Python 3.11+
 - Git
 - Windows (primary), Linux (partial), macOS (partial)
+
+> **⚠️ Platform Note:** F.R.I.D.A.Y. is built and tested primarily on **Windows**. Some features (desktop control, system notifications, audio routing, gesture control) rely on Windows-specific APIs and may not work fully on Linux or macOS. For the best experience, use Windows 10/11.
+
 - 4GB+ RAM
 - Microphone + Speaker (for voice)
 - Webcam (optional, for gestures/AR)

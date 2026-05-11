@@ -1,4 +1,4 @@
-> ** Runs on anything:** 4GB RAM, i3 processor, no GPU required. Pure Python, zero native compilation.
+> **Runs on anything:** 4GB RAM, i3 processor, no GPU required. Pure Python, zero native compilation.
 
 # 🌌 F.R.I.D.A.Y. — Autonomous Cognitive AI Operating System for General Intelligence
 

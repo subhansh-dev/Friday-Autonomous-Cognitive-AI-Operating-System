@@ -953,6 +953,18 @@ class EmotionalRegulation:
                 self._save()
             return pruned
 
+    def get_stats(self) -> dict:
+        """Get overall emotional regulation statistics."""
+        with self._lock:
+            total_memories = sum(len(ml) for ml in self._emotional_memories.values())
+            return {
+                "somatic_markers": len(self._somatic_markers),
+                "emotion_categories": len(self._somatic_markers),
+                "emotional_memories": total_memories,
+                "regulation_strategies": len(self._regulation_strategies),
+                "session_regulations": getattr(self, '_session_regulations', 0),
+            }
+
 
 # ── Singleton ───────────────────────────────────────────────────────────────
 

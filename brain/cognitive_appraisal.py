@@ -456,6 +456,16 @@ class CognitiveAppraisal:
                 ],
             }
 
+    def get_stats(self) -> dict:
+        """Get overall cognitive appraisal statistics."""
+        with self._lock:
+            return {
+                "total_appraisals": self._data["meta"].get("total_appraisals", 0),
+                "patterns_found": len(self._data.get("learned_patterns", {})),
+                "active_goals": len(self._data["goal_system"].get("active_goals", [])),
+                "history_size": len(self._data.get("appraisal_history", [])),
+            }
+
 
 # ─── Singleton ─────────────────────────────────────────────────────────
 

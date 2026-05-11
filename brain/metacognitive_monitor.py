@@ -831,6 +831,23 @@ class MetacognitiveMonitor:
 
     # ── Maintenance ─────────────────────────────────────────────────────
 
+    def get_stats(self) -> dict:
+        """Get overall metacognitive monitor statistics."""
+        with self._lock:
+            return {
+                "session_ops": self._session_ops,
+                "session_start": self._session_start,
+                "calibration_entries": len(self._calibration_entries),
+                "error_log_size": len(self._error_log),
+                "error_patterns": len(self._error_patterns),
+                "strategies": len(self._strategies),
+                "active_modules": len(self._active_modules),
+                "attention_modules": len(self._attention_scores),
+                "total_calibrations": self._data.get("meta", {}).get("total_calibrations", 0),
+                "total_errors_logged": self._data.get("meta", {}).get("total_errors_logged", 0),
+                "total_strategy_records": self._data.get("meta", {}).get("total_strategy_records", 0),
+            }
+
     def cleanup_old_data(self, days: int = 30):
         """Remove data older than specified days."""
         cutoff = (datetime.now() - timedelta(days=days)).isoformat()

@@ -205,6 +205,22 @@ class AGIOrchestrator:
             # Code reflection & cyber reasoning
             "code_reflector": ("brain.code_reflector", "get_code_reflector"),
             "cyber_reasoning": ("brain.cyber_reasoning", "get_cyber_engine"),
+            # AGI Pillars — Multi-agent & autonomous systems
+            "multi_agent_orchestrator": ("brain.multi_agent_orchestrator", "get_multi_agent_orchestrator"),
+            "goal_engine": ("brain.goal_engine", "get_goal_engine"),
+            "intrinsic_motivation": ("brain.intrinsic_motivation", "get_intrinsic_motivation"),
+            "autonomous_planner": ("brain.autonomous_planner", "get_autonomous_planner"),
+            # AGI Pillars — Memory & cognition
+            "memory_consolidation": ("brain.memory_consolidation", "get_memory_consolidation"),
+            "associative_memory": ("brain.associative_memory", "get_associative_memory"),
+            "predictive_memory": ("brain.predictive_memory", "get_predictive_memory"),
+            # AGI Pillars — Social & abstract reasoning
+            "theory_of_mind": ("brain.theory_of_mind", "get_theory_of_mind"),
+            "abstraction_engine": ("brain.abstraction_engine", "get_abstraction_engine"),
+            # AGI Pillars — Self-awareness & world modeling
+            "introspection_engine": ("brain.introspection_engine", "get_introspection_engine"),
+            "world_simulation": ("brain.world_simulation", "get_world_simulation"),
+            "code_evolution": ("brain.code_evolution", "get_code_evolution"),
         }
 
         for name, (module_path, func_name) in module_loaders.items():

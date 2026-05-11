@@ -501,6 +501,18 @@ class CognitiveLoadManager:
                 ],
             }
 
+    def get_stats(self) -> dict:
+        """Get overall cognitive load statistics."""
+        with self._lock:
+            return {
+                "active_modules": len(self._active_modules),
+                "working_memory_used": len(self._working_memory),
+                "working_memory_capacity": self._max_chunks,
+                "current_load": round(self._compute_current_load(), 3),
+                "load_history_size": len(self._load_history),
+                "fatigue_score": getattr(self, '_fatigue_score', 0.0),
+            }
+
 
 # ─── Singleton ─────────────────────────────────────────────────────────
 

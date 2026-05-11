@@ -452,6 +452,102 @@ except Exception as e:
     print(f"[FRIDAY] brain.cognitive_load: {e}", flush=True)
     get_cognitive_load_manager = None
 
+_agi_multi_agent_ok = False
+try:
+    from brain.multi_agent_orchestrator import get_multi_agent_orchestrator
+    _agi_multi_agent_ok = True
+except Exception as e:
+    print(f"[FRIDAY] brain.multi_agent_orchestrator: {e}", flush=True)
+    get_multi_agent_orchestrator = None
+
+_agi_goal_ok = False
+try:
+    from brain.goal_engine import get_goal_engine
+    _agi_goal_ok = True
+except Exception as e:
+    print(f"[FRIDAY] brain.goal_engine: {e}", flush=True)
+    get_goal_engine = None
+
+_agi_motivation_ok = False
+try:
+    from brain.intrinsic_motivation import get_intrinsic_motivation
+    _agi_motivation_ok = True
+except Exception as e:
+    print(f"[FRIDAY] brain.intrinsic_motivation: {e}", flush=True)
+    get_intrinsic_motivation = None
+
+_agi_planner_ok = False
+try:
+    from brain.autonomous_planner import get_autonomous_planner
+    _agi_planner_ok = True
+except Exception as e:
+    print(f"[FRIDAY] brain.autonomous_planner: {e}", flush=True)
+    get_autonomous_planner = None
+
+_agi_mem_consolidation_ok = False
+try:
+    from brain.memory_consolidation import get_memory_consolidation
+    _agi_mem_consolidation_ok = True
+except Exception as e:
+    print(f"[FRIDAY] brain.memory_consolidation: {e}", flush=True)
+    get_memory_consolidation = None
+
+_agi_associative_ok = False
+try:
+    from brain.associative_memory import get_associative_memory
+    _agi_associative_ok = True
+except Exception as e:
+    print(f"[FRIDAY] brain.associative_memory: {e}", flush=True)
+    get_associative_memory = None
+
+_agi_predictive_ok = False
+try:
+    from brain.predictive_memory import get_predictive_memory
+    _agi_predictive_ok = True
+except Exception as e:
+    print(f"[FRIDAY] brain.predictive_memory: {e}", flush=True)
+    get_predictive_memory = None
+
+_agi_tom_ok = False
+try:
+    from brain.theory_of_mind import get_theory_of_mind
+    _agi_tom_ok = True
+except Exception as e:
+    print(f"[FRIDAY] brain.theory_of_mind: {e}", flush=True)
+    get_theory_of_mind = None
+
+_agi_abstraction_ok = False
+try:
+    from brain.abstraction_engine import get_abstraction_engine
+    _agi_abstraction_ok = True
+except Exception as e:
+    print(f"[FRIDAY] brain.abstraction_engine: {e}", flush=True)
+    get_abstraction_engine = None
+
+_agi_introspection_ok = False
+try:
+    from brain.introspection_engine import get_introspection_engine
+    _agi_introspection_ok = True
+except Exception as e:
+    print(f"[FRIDAY] brain.introspection_engine: {e}", flush=True)
+    get_introspection_engine = None
+
+_agi_world_sim_ok = False
+try:
+    from brain.world_simulation import get_world_simulation
+    _agi_world_sim_ok = True
+except Exception as e:
+    print(f"[FRIDAY] brain.world_simulation: {e}", flush=True)
+    get_world_simulation = None
+
+_agi_code_evolution_ok = False
+try:
+    from brain.code_evolution import get_code_evolution
+    _agi_code_evolution_ok = True
+except Exception as e:
+    print(f"[FRIDAY] brain.code_evolution: {e}", flush=True)
+    get_code_evolution = None
+
 _verification_ok = False
 try:
     from actions.verification import (
@@ -608,6 +704,9 @@ try:
     from skills.experience_replay import get_experience_replay
     from skills.adaptive_planner import get_adaptive_planner
     from skills.screen_watcher import ScreenWatcher
+    from skills.research_agent import get_research_agent
+    from skills.creative_studio import get_creative_studio
+    from skills.document_intelligence import get_document_intelligence
     _skills_ok = True
 except Exception:
     pass
@@ -1803,10 +1902,25 @@ class FridayLive:
                 self._digital_twin = DigitalTwin()
             except Exception:
                 self._digital_twin = _NullModule()
+            try:
+                self._research_agent = get_research_agent()
+            except Exception:
+                self._research_agent = _NullModule()
+            try:
+                self._creative_studio = get_creative_studio()
+            except Exception:
+                self._creative_studio = _NullModule()
+            try:
+                self._document_intelligence = get_document_intelligence()
+            except Exception:
+                self._document_intelligence = _NullModule()
         else:
             self._deep_dive = _NullModule()
             self._auto_doc = _NullModule()
             self._digital_twin = _NullModule()
+            self._research_agent = _NullModule()
+            self._creative_studio = _NullModule()
+            self._document_intelligence = _NullModule()
 
         self._sentinel = None
         self._clipboard = None
@@ -1949,6 +2063,67 @@ class FridayLive:
             self._cognitive_load = get_cognitive_load_manager() if get_cognitive_load_manager else None
         except Exception:
             self._cognitive_load = None
+
+        # ── AGI Pillar Modules ────────────────────────────────────────────
+        try:
+            self._multi_agent_orchestrator = get_multi_agent_orchestrator() if get_multi_agent_orchestrator else None
+        except Exception:
+            self._multi_agent_orchestrator = None
+
+        try:
+            self._goal_engine = get_goal_engine() if get_goal_engine else None
+        except Exception:
+            self._goal_engine = None
+
+        try:
+            self._intrinsic_motivation = get_intrinsic_motivation() if get_intrinsic_motivation else None
+        except Exception:
+            self._intrinsic_motivation = None
+
+        try:
+            self._autonomous_planner = get_autonomous_planner() if get_autonomous_planner else None
+        except Exception:
+            self._autonomous_planner = None
+
+        try:
+            self._memory_consolidation = get_memory_consolidation() if get_memory_consolidation else None
+        except Exception:
+            self._memory_consolidation = None
+
+        try:
+            self._associative_memory = get_associative_memory() if get_associative_memory else None
+        except Exception:
+            self._associative_memory = None
+
+        try:
+            self._predictive_memory = get_predictive_memory() if get_predictive_memory else None
+        except Exception:
+            self._predictive_memory = None
+
+        try:
+            self._theory_of_mind = get_theory_of_mind() if get_theory_of_mind else None
+        except Exception:
+            self._theory_of_mind = None
+
+        try:
+            self._abstraction_engine = get_abstraction_engine() if get_abstraction_engine else None
+        except Exception:
+            self._abstraction_engine = None
+
+        try:
+            self._introspection_engine = get_introspection_engine() if get_introspection_engine else None
+        except Exception:
+            self._introspection_engine = None
+
+        try:
+            self._world_simulation = get_world_simulation() if get_world_simulation else None
+        except Exception:
+            self._world_simulation = None
+
+        try:
+            self._code_evolution = get_code_evolution() if get_code_evolution else None
+        except Exception:
+            self._code_evolution = None
 
         try:
             self._self_awareness = get_self_awareness() if get_self_awareness else _NullModule()

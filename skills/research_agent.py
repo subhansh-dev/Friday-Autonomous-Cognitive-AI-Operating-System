@@ -739,6 +739,10 @@ class ResearchAgent:
                 "research_sessions": len(self._research_history),
             }
 
+    def get_stats(self) -> dict:
+        """Get research agent statistics (alias for get_graph_stats)."""
+        return self.get_graph_stats()
+
     def get_recent_research(self, limit: int = 10) -> List[dict]:
         """Get recent research history."""
         with self._lock:

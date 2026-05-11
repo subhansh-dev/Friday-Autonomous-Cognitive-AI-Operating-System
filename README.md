@@ -53,7 +53,7 @@
 - [Why F.R.I.D.A.Y](#-why-friday)
 - [Features At A Glance](#-features-at-a-glance)
 - [Cognitive Architecture](#-cognitive-architecture)
-- [Core Brain Systems (38 Modules)](#-core-brain-systems-38-modules)
+- [Core Brain Systems (50 Modules)](#-core-brain-systems-50-modules)
 - [Autonomous Research Agent](#-autonomous-research-agent)
 - [Creative Studio](#-creative-studio)
 - [Document Intelligence](#-document-intelligence)
@@ -81,7 +81,7 @@
 
 **F.R.I.D.A.Y.** is a next-generation **Autonomous Cognitive AI Operating System** — not a chatbot, not a wrapper around an API. A full cognitive architecture with real-time voice interaction, 38 cognitive modules, autonomous research and creative writing engines, document intelligence, 56 tool actions, neural memory systems, and autonomous decision-making.
 
-**85,000+ lines of Python. 170+ source files. Zero shortcuts.** *(~105,000 lines total counting everything — configs, docs, assets, the works.)*
+**95,000+ lines of Python. 180+ source files. Zero shortcuts.** *(~115,000 lines total counting everything — configs, docs, assets, the works.)*
 
 Built as the spiritual successor to Jarvis-MT67, Friday represents a new paradigm in AI assistance — not just responding to commands, but actively learning, anticipating needs, and evolving with each interaction.
 
@@ -90,14 +90,19 @@ Built as the spiritual successor to Jarvis-MT67, Friday represents a new paradig
 | Traditional AI Assistants | F.R.I.D.A.Y. |
 |---------------------------|---------------|
 | Stateless — forgets you every session | **Neural memory** with Hebbian learning across sessions |
-| Reactive — waits for commands | **Proactive** — anticipates needs, idle exploration |
-| Single model, single purpose | **38 cognitive modules** coordinating via Global Workspace |
-| No self-awareness | **Self-model** tracks capabilities, confidence, growth |
-| No learning from mistakes | **Dreaming system** replays experiences, extracts patterns |
-| Generic responses | **Theory of mind** models the user's state and preferences |
+| Reactive — waits for commands | **Proactive** — anticipates needs, idle exploration, autonomous goal pursuit |
+| Single model, single purpose | **50 cognitive modules** coordinating via Global Workspace |
+| No self-awareness | **Self-model** + **introspection engine** with confidence calibration & bias detection |
+| No learning from mistakes | **Dreaming system** replays experiences, **code evolution** enables self-improvement |
+| Generic responses | **Theory of mind** models the user's expertise, intent, and emotional state |
 | One voice, one tone | **10 voice emotions** with natural accent |
 | Can't research or create | **Autonomous research**, **creative writing**, **document analysis** built-in |
 | Manual security scanning | **Dual security pipelines** (Mythos + Cyber Reasoning) |
+| Sequential agent execution | **Multi-agent orchestrator** — run 30 agents in parallel, debate, pipeline, or swarm mode |
+| No long-term planning | **Autonomous planner** with MCTS-inspired goal decomposition and replanning |
+| Static memory | **Memory consolidation** (episodic→semantic), **associative memory** (spreading activation), **predictive memory** (anticipatory recall) |
+| No cross-domain reasoning | **Abstraction engine** — analogical transfer, first principles, counterfactual reasoning |
+| No world awareness | **World simulation** — real-time event tracking, trend detection, counterfactual modeling |
 
 ---
 
@@ -154,20 +159,26 @@ System 2 (complex): Plan → Simulate → Execute → Verify → Reflect → Lea
 
 | Category | What It Does |
 |----------|-------------|
-| 🧠 **Cognition** | 38 cognitive modules — self-awareness, active inference, intuition engine, metacognitive monitor, emotional regulation, dreaming, curiosity, learning, procedural memory, episodic memory, vector memory, code intelligence |
+| 🧠 **Cognition** | 50 cognitive modules — self-awareness, active inference, intuition engine, metacognitive monitor, emotional regulation, dreaming, curiosity, learning, procedural memory, episodic memory, vector memory, code intelligence, **+ 12 AGI pillars** |
 | 🔬 **Research** | **Autonomous research agent** — knowledge graph construction, entity extraction, claim tracking, contradiction detection, multi-source synthesis, citation management |
 | ✍️ **Creative** | **Creative studio** — story planning (4 structures), world building, character engine, 6 style profiles, 8 poetry forms, beat guidance, dialogue system |
 | 📄 **Documents** | **Document intelligence** — contract review with risk assessment, argument mapping, fallacy detection, bias detection, reading level analysis, cross-document reasoning |
 | 🎙️ **Voice** | Real-time Gemini Live API conversation, 10 voice emotions, 5 voice types |
 | 💻 **Coding** | Cognitive coding engine with semantic graph, hierarchical planning (EFE), predictive simulation, reflective debugging |
-| 🤖 **Agents** | 24+ specialized expert agents (security engineer, frontend dev, code reviewer, etc.) |
+| 🤖 **Agents** | **30 specialized expert agents** — run individually or in **parallel/debate/pipeline/swarm** modes via multi-agent orchestrator |
+| 🎯 **Goals** | **Autonomous goal engine** — hierarchical goal management, MCTS-inspired planning, intrinsic motivation (curiosity, mastery, autonomy drives) |
+| 🧠 **Memory** | **9 memory types** — neural, episodic, vector, procedural, working, global workspace, **+ associative (spreading activation), predictive (anticipatory), consolidation (episodic→semantic)** |
+| 🤝 **Social** | **Theory of mind** — user expertise modeling, intent inference, emotional state tracking, adaptive communication style |
+| 🌐 **Abstraction** | **Abstraction engine** — cross-domain analogies, first principles reasoning, counterfactual analysis, causal chain tracing, emergent insight generation |
+| 🪞 **Self-Awareness** | **Introspection engine** — confidence calibration, cognitive bias detection (12 bias types), epistemic humility, value alignment, narrative self-model |
+| 🌍 **World Model** | **World simulation** — real-time event ingestion, trend detection, counterfactual modeling, user-relevant event filtering |
+| 🧬 **Self-Improvement** | **Code evolution** — performance analysis, improvement proposals, sandbox testing, safe apply with rollback |
 | 🖥️ **System** | Mouse/keyboard control, app launching, system settings, desktop management |
 | 🌐 **Web** | Browser automation, deep research, web search, YouTube integration |
 | 🗺️ **3D Viz** | Holographic globe map with eye+hand hybrid control, Google Earth with gesture + gaze control, Iron Man AR builder with gesture drawing |
 | 🎵 **Gestures** | Hand gesture music control with MediaPipe + LSTM, Standard/DJ modes |
 | 📁 **Files** | Full file system operations, code writing/running/debugging |
-| 🧬 **Memory** | 6 memory types — neural, episodic, vector, procedural, working, global workspace |
-| 🔄 **Learning** | Error-driven updates, Q-learning, metacognitive reflection, experience replay |
+| 🔄 **Learning** | Error-driven updates, Q-learning, metacognitive reflection, experience replay, **recursive self-improvement** |
 | 🔔 **Proactive** | Idle check-ins (5/15/30min tiers), returning-user greetings, reminder monitoring, quiet hours |
 | 🛡️ **Security** | Mythos 7-agent static analysis + Cyber Reasoning engine with adversarial verification (optional module) |
 
@@ -273,7 +284,7 @@ Friday's cognitive architecture is grounded in peer-reviewed research from neuro
 
 ---
 
-## 🧠 Core Brain Systems (38 Modules)
+## 🧠 Core Brain Systems (50 Modules)
 
 F.R.I.D.A.Y.'s brain lives in `brain/` — 14 interconnected modules totaling **32,800+ lines**.
 
@@ -495,6 +506,91 @@ F.R.I.D.A.Y.'s brain lives in `brain/` — 14 interconnected modules totaling **
 - Orchestrates metacognitive monitoring, emotional regulation, and intuition
 - Manages handoffs between modules with context preservation
 - Composite consciousness metric computation across all cognitive dimensions
+
+### 38. Multi-Agent Orchestrator (`brain/multi_agent_orchestrator.py`)
+- Simultaneous execution of all 30 agency agents in parallel, debate, pipeline, voting, specialist, or swarm modes
+- Pre-built team configurations: full_stack_build, code_review, research, design, incident_response, security_audit, testing
+- Agent reliability tracking and performance metrics
+- Cross-agent synthesis — reconciles outputs from multiple experts into coherent recommendations
+- Dynamic agent selection based on task relevance scoring
+
+### 39. Goal Engine (`brain/goal_engine.py`)
+- Hierarchical goal management: life goals → project goals → task goals → subgoals
+- Goal decomposition — uses LLM to break complex goals into actionable subgoals
+- Priority scoring with deadline awareness and dependency tracking
+- Goal status lifecycle: draft → active → completed → abandoned
+- Goal tree visualization and progress tracking
+
+### 40. Intrinsic Motivation (`brain/intrinsic_motivation.py`)
+- Based on Self-Determination Theory: autonomy, competence, and relatedness drives
+- Curiosity scoring — assesses novelty of topics and generates exploration goals
+- Flow zone detection — monitors difficulty vs. skill for optimal engagement
+- Mastery tracking across domains with expertise level estimation
+- Motivation-aware task routing (match tasks to current motivational state)
+
+### 41. Autonomous Planner (`brain/autonomous_planner.py`)
+- MCTS-inspired (Monte Carlo Tree Search) plan decomposition
+- Multi-step plan creation with dependency tracking and agent assignment
+- Plan evaluation with success probability estimation
+- Replanning capability — automatically creates revised plans when steps fail
+- Next-action extraction across all active plans
+
+### 42. Memory Consolidation (`brain/memory_consolidation.py`)
+- Sleep-like consolidation: compresses episodic memories into semantic knowledge
+- Redundancy compression — finds and merges duplicate/similar memories
+- Importance strengthening — boosts memories referenced frequently
+- Decay management — weakens unused memories over time
+- Consolidation cycles with before/after metrics
+
+### 43. Associative Memory (`brain/associative_memory.py`)
+- Spreading activation networks for context-dependent recall
+- Bidirectional associative links between memory nodes
+- Activation decay with configurable propagation depth
+- Context retrieval — gets surrounding associative neighborhood
+- Automatic pruning of weakly activated, rarely accessed nodes
+
+### 44. Predictive Memory (`brain/predictive_memory.py`)
+- Anticipates what memories will be needed based on current context
+- Pre-loads relevant memories into working memory before they're requested
+- Prediction accuracy tracking — learns which anticipation patterns work
+- Task-type-based prediction for common workflows
+- Confidence scoring for prediction quality
+
+### 45. Theory of Mind (`brain/theory_of_mind.py`)
+- User expertise modeling — estimates knowledge level per topic
+- Intent inference — determines what the user REALLY wants, not just what they said
+- Emotional state tracking from message patterns
+- Communication style adaptation (formal/casual/technical/simple)
+- User need prediction — anticipates next requests based on interaction patterns
+
+### 46. Abstraction Engine (`brain/abstraction_engine.py`)
+- Cross-domain analogical transfer — apply solutions from domain A to problems in domain B
+- First principles reasoning — decompose any problem to fundamental components
+- Counterfactual reasoning — "what if X had been different?" with causal chain analysis
+- Emergent insight generation — combine unrelated concepts for novel ideas
+- Pattern abstraction — find common patterns across disparate instances
+
+### 47. Introspection Engine (`brain/introspection_engine.py`)
+- Confidence calibration — tracks predicted vs. actual accuracy across domains
+- Cognitive bias detection — identifies 12 bias types (confirmation, anchoring, availability, overconfidence, etc.)
+- Epistemic humility — honest assessment of what is NOT known
+- Value alignment checking — evaluates actions against 8 core values
+- Narrative self-model — maintains coherent story of identity and growth
+- Mistake learning — records errors with root cause analysis and lessons
+
+### 48. World Simulation (`brain/world_simulation.py`)
+- Real-time world event ingestion and processing
+- Predictive modeling — forecasts outcomes based on historical patterns
+- Trend detection — identifies frequency, impact, and entity trends across domains
+- Counterfactual simulation — "what if the world was different?"
+- User-relevant event filtering with time-decayed relevance scoring
+
+### 49. Code Evolution (`brain/code_evolution.py`)
+- Safe recursive self-improvement with full audit trail
+- Performance analysis — measures error rates, latency, and health scores per module
+- Improvement proposals — generates targeted suggestions based on performance data
+- Sandbox testing — 5-test verification pipeline (existence, syntax, safety, confidence, scope)
+- Apply with backup — creates backups before applying changes, with instant rollback capability
 
 ---
 

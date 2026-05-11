@@ -533,7 +533,7 @@ class GestureController:
         self.landmarks = [None, None]
         self._gesture_buffers = [deque(maxlen=7), deque(maxlen=7)]
         self._hand_lost_frames = [0, 0]
-        self._hand_lost_limit = 4               # fast recovery
+        self._hand_lost_limit = 6               # ~100ms at 60fps — tolerant but not sticky
         self._last_process_time = [0.0, 0.0]
         # Spring physics state per hand
         self._spring_pos = [None, None]         # current spring position
@@ -644,6 +644,9 @@ class GestureController:
         elif index_up and middle_up and not ring_up and not pinky_up:
             return "peace", pinch_dist
         elif index_up and not middle_up and not ring_up and not pinky_up:
+            return "point", pinch_dist
+        elif ext == 2:
+            # Any other 2-finger combo (not peace) — treat as point-ish select
             return "point", pinch_dist
         elif ext >= 3:
             return "open", pinch_dist
@@ -3584,6 +3587,7 @@ class HoloBuilder:
                 self.ar_mode = True
                 self.power_up_active = True
                 self.power_up_start = time.time()
+                self._gesture_warned = False  # reset so warning can fire again
                 if hasattr(self, 'sound_fx'):
                     pass # self.sound_fx.play_power_up()  # disabled per user request
                 self.renderer.bg_color = (0.0, 0.0, 0.0)
@@ -3628,10 +3632,16 @@ class HoloBuilder:
                 if self.gesture_ctrl.gesture != prev_gesture:
                     self.interaction_fx.trigger_gesture_change(
                         self.gesture_ctrl.gesture)
-            elif self.ar_mode and not self.gesture_ctrl.enabled:
+            elif not self.gesture_ctrl.enabled:
                 if not hasattr(self, '_gesture_warned'):
                     print("[HOLO] AR mode active but gestures DISABLED (MediaPipe/model issue)")
                     self._gesture_warned = True
+        else:
+            # In non-AR mode, reset gesture state so it doesn't leak into keyboard/mouse input
+            if self.gesture_ctrl.enabled and self.gesture_ctrl.gesture != GestureController.NONE:
+                self.gesture_ctrl.gesture = GestureController.NONE
+                self.gesture_ctrl.hand_pos = None
+                self.gesture_ctrl.hand_positions = [None, None]
 
     def _render(self):
         if self.ar_mode and self.ar.frame is not None:
@@ -3696,142 +3706,368 @@ class HoloBuilder:
         t = time.time()
         pulse = 0.7 + 0.2 * math.sin(t * 4)
 
+        # Track gesture duration for animated effects
+        if not hasattr(self, '_gesture_cursor_state'):
+            self._gesture_cursor_state = {
+                'last_gesture': GestureController.NONE,
+                'gesture_start': t,
+                'ripples': [],       # expanding ring ripples
+                'particles': [],     # burst particles
+                'beam_end': None,    # laser beam endpoint
+            }
+        gs = self._gesture_cursor_state
+        if gesture != gs['last_gesture']:
+            # Gesture changed — spawn transition particles
+            for i in range(12):
+                angle = random.uniform(0, math.pi * 2)
+                speed = random.uniform(80, 250)
+                gs['particles'].append({
+                    'x': hx, 'y': hy,
+                    'vx': speed * math.cos(angle),
+                    'vy': speed * math.sin(angle),
+                    't0': t, 'life': random.uniform(0.3, 0.7),
+                    'color': self._gesture_fx_color(gesture),
+                })
+            gs['last_gesture'] = gesture
+            gs['gesture_start'] = t
+        g_elapsed = t - gs['gesture_start']
+
         if gesture == GestureController.PINCH:
-            glColor4f(1.0, 0.0, 0.4, pulse * 0.8)
-            glPointSize(10.0)
+            # ── Pinch: drawing mode — ink ripple + energy particles ───
+            # Spawn periodic ripples while drawing
+            if not gs['ripples'] or t - gs['ripples'][-1]['t0'] > 0.15:
+                gs['ripples'].append({'t0': t, 'x': hx, 'y': hy})
+            gs['ripples'] = [r for r in gs['ripples'] if t - r['t0'] < 0.8]
+
+            # Expanding ripple rings
+            for r in gs['ripples']:
+                age = t - r['t0']
+                prog = age / 0.8
+                radius = prog * 35
+                alpha = (1 - prog) * 0.6
+                glColor4f(1.0, 0.2, 0.4, alpha)
+                glLineWidth(2.0 * (1 - prog))
+                glBegin(GL_LINE_LOOP)
+                for i in range(24):
+                    a = 2 * math.pi * i / 24
+                    glVertex2f(r['x'] + radius * math.cos(a),
+                               r['y'] + radius * math.sin(a))
+                glEnd()
+
+            # Central bright core with glow layers
+            glColor4f(1.0, 0.0, 0.4, 0.15 * pulse)
+            glPointSize(28.0)
+            glBegin(GL_POINTS)
+            glVertex2f(hx, hy)
+            glEnd()
+            glColor4f(1.0, 0.1, 0.5, 0.4 * pulse)
+            glPointSize(14.0)
+            glBegin(GL_POINTS)
+            glVertex2f(hx, hy)
+            glEnd()
+            glColor4f(1.0, 0.4, 0.6, 0.9)
+            glPointSize(7.0)
             glBegin(GL_POINTS)
             glVertex2f(hx, hy)
             glEnd()
 
-            glColor4f(1.0, 0.2, 0.4, pulse)
-            glLineWidth(2.0)
-            s = 12
-            glBegin(GL_LINES)
+            # Hexagonal scanner ring rotating
+            rot = t * 4
+            s = 14 + 3 * math.sin(t * 6)
+            glColor4f(1.0, 0.2, 0.4, pulse * 0.7)
+            glLineWidth(1.5)
+            glBegin(GL_LINE_LOOP)
             for i in range(6):
-                a = 2 * math.pi * i / 6
+                a = rot + 2 * math.pi * i / 6
                 glVertex2f(hx + s * math.cos(a), hy + s * math.sin(a))
-                a2 = 2 * math.pi * (i + 1) / 6
-                glVertex2f(hx + s * math.cos(a2), hy + s * math.sin(a2))
             glEnd()
 
-            glColor4f(1.0, 0.0, 0.4, pulse * 0.3)
+            # Outer energy ring
+            glColor4f(1.0, 0.0, 0.4, pulse * 0.25)
             glLineWidth(1.0)
             glBegin(GL_LINE_LOOP)
             for i in range(36):
                 a = 2 * math.pi * i / 36
-                glVertex2f(hx + (s + 6) * math.cos(a), hy + (s + 6) * math.sin(a))
+                glVertex2f(hx + (s + 8) * math.cos(a), hy + (s + 8) * math.sin(a))
             glEnd()
 
         elif gesture == GestureController.FIST:
+            # ── Fist: grab mode — shockwave corners + grip field ──────
+            # Shockwave on initial grab
+            if g_elapsed < 0.5:
+                sw_prog = g_elapsed / 0.5
+                sw_r = sw_prog * 60
+                sw_alpha = (1 - sw_prog) * 0.7
+                glColor4f(1.0, 0.7, 0.0, sw_alpha)
+                glLineWidth(2.5 * (1 - sw_prog))
+                glBegin(GL_LINE_LOOP)
+                for i in range(32):
+                    a = 2 * math.pi * i / 32
+                    glVertex2f(hx + sw_r * math.cos(a), hy + sw_r * math.sin(a))
+                glEnd()
+
+            # Corner brackets with animated pulse
+            arm = 20 + 4 * math.sin(t * 5)
+            gap = 8
             glColor4f(1.0, 0.7, 0.0, pulse)
             glLineWidth(2.5)
-            arm = 18
-            gap = 8
             glBegin(GL_LINES)
-            glVertex2f(hx - arm, hy - arm)
-            glVertex2f(hx - gap, hy - arm)
-            glVertex2f(hx - arm, hy - arm)
-            glVertex2f(hx - arm, hy - gap)
-            glVertex2f(hx + arm, hy - arm)
-            glVertex2f(hx + gap, hy - arm)
-            glVertex2f(hx + arm, hy - arm)
-            glVertex2f(hx + arm, hy - gap)
-            glVertex2f(hx - arm, hy + arm)
-            glVertex2f(hx - gap, hy + arm)
-            glVertex2f(hx - arm, hy + arm)
-            glVertex2f(hx - arm, hy + gap)
-            glVertex2f(hx + arm, hy + arm)
-            glVertex2f(hx + gap, hy + arm)
-            glVertex2f(hx + arm, hy + arm)
-            glVertex2f(hx + arm, hy + gap)
+            # Top-left
+            glVertex2f(hx - arm, hy - arm); glVertex2f(hx - gap, hy - arm)
+            glVertex2f(hx - arm, hy - arm); glVertex2f(hx - arm, hy - gap)
+            # Top-right
+            glVertex2f(hx + arm, hy - arm); glVertex2f(hx + gap, hy - arm)
+            glVertex2f(hx + arm, hy - arm); glVertex2f(hx + arm, hy - gap)
+            # Bottom-left
+            glVertex2f(hx - arm, hy + arm); glVertex2f(hx - gap, hy + arm)
+            glVertex2f(hx - arm, hy + arm); glVertex2f(hx - arm, hy + gap)
+            # Bottom-right
+            glVertex2f(hx + arm, hy + arm); glVertex2f(hx + gap, hy + arm)
+            glVertex2f(hx + arm, hy + arm); glVertex2f(hx + arm, hy + gap)
             glEnd()
 
+            # Rotating inner square (energy field)
+            rot = t * 2.5
+            inner = 10 + 3 * math.sin(t * 3)
             glColor4f(1.0, 0.7, 0.0, pulse * 0.5)
-            glPointSize(6.0)
+            glLineWidth(1.5)
+            glBegin(GL_LINE_LOOP)
+            for i in range(4):
+                a = rot + math.pi / 2 * i + math.pi / 4
+                glVertex2f(hx + inner * math.cos(a), hy + inner * math.sin(a))
+            glEnd()
+
+            # Central grip point
+            glColor4f(1.0, 0.8, 0.2, 0.8)
+            glPointSize(5.0)
             glBegin(GL_POINTS)
             glVertex2f(hx, hy)
             glEnd()
 
-            glColor4f(1.0, 0.7, 0.0, pulse * 0.3)
+            # Pulsing outer ring
+            outer_r = arm + 8 + 4 * math.sin(t * 4)
+            glColor4f(1.0, 0.7, 0.0, pulse * 0.2)
             glLineWidth(1.0)
             glBegin(GL_LINE_LOOP)
             for i in range(36):
                 a = 2 * math.pi * i / 36
-                glVertex2f(hx + (arm + 5) * math.cos(a), hy + (arm + 5) * math.sin(a))
+                glVertex2f(hx + outer_r * math.cos(a), hy + outer_r * math.sin(a))
             glEnd()
 
         elif gesture == GestureController.PEACE:
-            glColor4f(0.0, 1.0, 0.5, pulse)
-            glLineWidth(2.5)
-            s = 20
+            # ── Peace: scale mode — V-beam + target scanning ──────────
+            # Laser beams from each finger
+            beam_len = 80 + 20 * math.sin(t * 3)
+            glColor4f(0.0, 1.0, 0.5, pulse * 0.6)
+            glLineWidth(2.0)
             glBegin(GL_LINES)
-            glVertex2f(hx, hy - s)
-            glVertex2f(hx - 5, hy - s + 10)
-            glVertex2f(hx, hy - s)
-            glVertex2f(hx + 5, hy - s + 10)
-            glVertex2f(hx, hy - s)
-            glVertex2f(hx, hy + s - 8)
-            glVertex2f(hx, hy + s)
-            glVertex2f(hx - 5, hy + s - 10)
-            glVertex2f(hx, hy + s)
-            glVertex2f(hx + 5, hy + s - 10)
-            glVertex2f(hx, hy - s + 10)
-            glVertex2f(hx, hy + s - 10)
+            # Left beam
+            glVertex2f(hx, hy)
+            glVertex2f(hx - beam_len * 0.3, hy - beam_len)
+            # Right beam
+            glVertex2f(hx, hy)
+            glVertex2f(hx + beam_len * 0.3, hy - beam_len)
             glEnd()
 
+            # Beam glow
+            glColor4f(0.0, 1.0, 0.5, pulse * 0.15)
+            glLineWidth(8.0)
+            glBegin(GL_LINES)
+            glVertex2f(hx, hy)
+            glVertex2f(hx - beam_len * 0.3, hy - beam_len)
+            glVertex2f(hx, hy)
+            glVertex2f(hx + beam_len * 0.3, hy - beam_len)
+            glEnd()
+
+            # Scanning target reticle at beam tips
+            for bx, by in [(hx - beam_len * 0.3, hy - beam_len),
+                           (hx + beam_len * 0.3, hy - beam_len)]:
+                r = 8 + 3 * math.sin(t * 5)
+                glColor4f(0.0, 1.0, 0.5, pulse * 0.5)
+                glLineWidth(1.5)
+                glBegin(GL_LINE_LOOP)
+                for i in range(16):
+                    a = 2 * math.pi * i / 16
+                    glVertex2f(bx + r * math.cos(a), by + r * math.sin(a))
+                glEnd()
+                # Cross-hairs
+                glColor4f(0.0, 1.0, 0.5, pulse * 0.3)
+                glLineWidth(1.0)
+                glBegin(GL_LINES)
+                glVertex2f(bx - r * 0.6, by); glVertex2f(bx + r * 0.6, by)
+                glVertex2f(bx, by - r * 0.6); glVertex2f(bx, by + r * 0.6)
+                glEnd()
+
+            # Central V-sign marker
+            s = 20
+            glColor4f(0.0, 1.0, 0.5, pulse)
+            glLineWidth(2.5)
+            glBegin(GL_LINES)
+            glVertex2f(hx, hy - s); glVertex2f(hx - 6, hy - s + 12)
+            glVertex2f(hx, hy - s); glVertex2f(hx + 6, hy - s + 12)
+            glVertex2f(hx, hy - s); glVertex2f(hx, hy + s - 8)
+            glEnd()
+
+            # Outer scanning ring (rotating segments)
+            rot = t * 1.5
+            outer = s + 12
             glColor4f(0.0, 1.0, 0.5, pulse * 0.3)
-            glLineWidth(1.0)
-            glBegin(GL_LINE_LOOP)
-            for i in range(36):
-                a = 2 * math.pi * i / 36
-                glVertex2f(hx + (s + 6) * math.cos(a), hy + (s + 6) * math.sin(a))
+            glLineWidth(1.5)
+            glBegin(GL_LINES)
+            for i in range(4):
+                a = rot + math.pi / 2 * i
+                a2 = a + 0.4
+                glVertex2f(hx + outer * math.cos(a), hy + outer * math.sin(a))
+                glVertex2f(hx + outer * math.cos(a2), hy + outer * math.sin(a2))
             glEnd()
 
         elif gesture == GestureController.OPEN:
+            # ── Open: release mode — energy field + scanning cross ────
+            r = 22 + 4 * math.sin(t * 3)
+
+            # Pulsing energy aura (multiple layers)
+            for layer in range(3):
+                lr = r + layer * 8
+                la = 0.25 - layer * 0.07
+                glColor4f(0.0, 0.83, 1.0, la * pulse)
+                glPointSize(2.0 + layer * 1.5)
+                glBegin(GL_POINTS)
+                for i in range(12):
+                    a = t * (1.5 - layer * 0.3) + 2 * math.pi * i / 12
+                    glVertex2f(hx + lr * math.cos(a), hy + lr * math.sin(a))
+                glEnd()
+
+            # Main circle
             glColor4f(0.0, 0.83, 1.0, pulse * 0.8)
             glLineWidth(1.5)
-            r = 20 + 3 * math.sin(t * 3)
             glBegin(GL_LINE_LOOP)
             for i in range(36):
                 a = 2 * math.pi * i / 36
                 glVertex2f(hx + r * math.cos(a), hy + r * math.sin(a))
             glEnd()
 
+            # Scanning cross-hair (rotating)
+            rot = t * 0.8
             glColor4f(0.0, 0.83, 1.0, pulse)
             glLineWidth(2.0)
             glBegin(GL_LINES)
-            glVertex2f(hx - r * 0.7, hy)
-            glVertex2f(hx + r * 0.7, hy)
-            glVertex2f(hx, hy - r * 0.7)
-            glVertex2f(hx, hy + r * 0.7)
-            glVertex2f(hx - r * 0.5, hy - r * 0.5)
-            glVertex2f(hx + r * 0.5, hy + r * 0.5)
-            glVertex2f(hx + r * 0.5, hy - r * 0.5)
-            glVertex2f(hx - r * 0.5, hy + r * 0.5)
+            glVertex2f(hx - r * 0.7, hy); glVertex2f(hx + r * 0.7, hy)
+            glVertex2f(hx, hy - r * 0.7); glVertex2f(hx, hy + r * 0.7)
             glEnd()
 
-            glColor4f(0.0, 0.83, 1.0, pulse * 0.3)
+            # Diagonal cross (rotating)
+            glColor4f(0.0, 0.83, 1.0, pulse * 0.5)
+            glLineWidth(1.0)
+            glBegin(GL_LINES)
+            d = r * 0.5
+            glVertex2f(hx - d * math.cos(rot), hy - d * math.sin(rot))
+            glVertex2f(hx + d * math.cos(rot), hy + d * math.sin(rot))
+            glVertex2f(hx + d * math.sin(rot), hy - d * math.cos(rot))
+            glVertex2f(hx - d * math.sin(rot), hy + d * math.cos(rot))
+            glEnd()
+
+            # Outer ring
+            glColor4f(0.0, 0.83, 1.0, pulse * 0.2)
             glLineWidth(1.0)
             glBegin(GL_LINE_LOOP)
             for i in range(36):
                 a = 2 * math.pi * i / 36
-                glVertex2f(hx + (r + 8) * math.cos(a), hy + (r + 8) * math.sin(a))
+                glVertex2f(hx + (r + 10) * math.cos(a), hy + (r + 10) * math.sin(a))
+            glEnd()
+
+            # Corner tick marks
+            glColor4f(0.0, 0.83, 1.0, pulse * 0.4)
+            glLineWidth(1.5)
+            tick_r = r + 5
+            glBegin(GL_LINES)
+            for i in range(4):
+                a = rot + math.pi / 2 * i
+                glVertex2f(hx + (tick_r - 4) * math.cos(a), hy + (tick_r - 4) * math.sin(a))
+                glVertex2f(hx + (tick_r + 4) * math.cos(a), hy + (tick_r + 4) * math.sin(a))
             glEnd()
 
         elif gesture == GestureController.POINT:
-            glColor4f(0.0, 0.83, 1.0, pulse * 0.9)
+            # ── Point: precision select — laser beam + target lock ────
+            # Laser beam extending from hand
+            beam_len = 120
+            # Beam direction: slight downward angle
+            bx = hx
+            by = hy - beam_len
+
+            # Wide beam glow
+            glColor4f(0.0, 0.83, 1.0, 0.08)
+            glLineWidth(12.0)
+            glBegin(GL_LINES)
+            glVertex2f(hx, hy)
+            glVertex2f(bx, by)
+            glEnd()
+
+            # Medium beam
+            glColor4f(0.0, 0.83, 1.0, 0.2)
+            glLineWidth(4.0)
+            glBegin(GL_LINES)
+            glVertex2f(hx, hy)
+            glVertex2f(bx, by)
+            glEnd()
+
+            # Core beam
+            glColor4f(0.5, 1.0, 1.0, 0.7)
+            glLineWidth(1.5)
+            glBegin(GL_LINES)
+            glVertex2f(hx, hy)
+            glVertex2f(bx, by)
+            glEnd()
+
+            # Target lock circle at beam end
+            lock_r = 14 + 3 * math.sin(t * 4)
+            glColor4f(0.0, 0.83, 1.0, pulse * 0.7)
+            glLineWidth(2.0)
+            # Segmented circle (4 arcs)
+            for seg in range(4):
+                a_start = t * 2 + seg * math.pi / 2
+                glBegin(GL_LINE_STRIP)
+                for j in range(6):
+                    a = a_start + j * (math.pi / 2) / 5
+                    glVertex2f(bx + lock_r * math.cos(a), by + lock_r * math.sin(a))
+                glEnd()
+
+            # Cross-hair at target
+            glColor4f(0.0, 0.83, 1.0, pulse * 0.5)
+            glLineWidth(1.0)
+            ch = 8
+            glBegin(GL_LINES)
+            glVertex2f(bx - ch, by); glVertex2f(bx + ch, by)
+            glVertex2f(bx, by - ch); glVertex2f(bx, by + ch)
+            glEnd()
+
+            # Dot at beam origin
+            glColor4f(0.0, 0.83, 1.0, 0.9)
             glPointSize(6.0)
             glBegin(GL_POINTS)
             glVertex2f(hx, hy)
             glEnd()
 
-            glColor4f(0.0, 0.83, 1.0, pulse * 0.5)
-            glLineWidth(1.5)
-            r = 10
-            glBegin(GL_LINE_LOOP)
-            for i in range(24):
-                a = 2 * math.pi * i / 24
-                glVertex2f(hx + r * math.cos(a), hy + r * math.sin(a))
+            # Small dot at target
+            glColor4f(1.0, 1.0, 1.0, 0.8)
+            glPointSize(3.0)
+            glBegin(GL_POINTS)
+            glVertex2f(bx, by)
+            glEnd()
+
+        # ── Gesture transition particles ─────────────────────────────
+        gs['particles'] = [p for p in gs['particles'] if t - p['t0'] < p['life']]
+        for p in gs['particles']:
+            age = t - p['t0']
+            prog = age / p['life']
+            px = p['x'] + p['vx'] * age
+            py = p['y'] + p['vy'] * age
+            alpha = (1 - prog) * 0.8
+            sz = 3.0 * (1 - prog * 0.5)
+            c = p['color']
+            glColor4f(c[0], c[1], c[2], alpha)
+            glPointSize(sz)
+            glBegin(GL_POINTS)
+            glVertex2f(px, py)
             glEnd()
 
         # ── Dual-hand overlay ─────────────────────────────────────────
@@ -3845,6 +4081,17 @@ class HoloBuilder:
         glPopMatrix()
         glEnable(GL_DEPTH_TEST)
         glEnable(GL_LIGHTING)
+
+    @staticmethod
+    def _gesture_fx_color(gesture):
+        """Return color tuple for a gesture type."""
+        return {
+            GestureController.PINCH: (1.0, 0.2, 0.4),
+            GestureController.FIST:  (1.0, 0.7, 0.0),
+            GestureController.PEACE: (0.0, 1.0, 0.5),
+            GestureController.OPEN:  (0.0, 0.83, 1.0),
+            GestureController.POINT: (0.0, 0.83, 1.0),
+        }.get(gesture, (0.0, 1.0, 0.85))
 
     def _draw_dual_hand_overlay(self, dh: DualHandGestureManager, t, pulse):
         """Draw connection lines, anchor points, and state indicator for dual-hand."""

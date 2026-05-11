@@ -264,7 +264,31 @@ def _send_whatsapp(receiver: str, message: str) -> str:
 
 
 def _send_telegram(receiver: str, message: str) -> str:
-    _require_pyautogui()
+    """Send a Telegram message. Prefers Bot API when token is available,
+    falls back to GUI automation (opening the desktop app)."""
+    # Try Bot API first — much more reliable than GUI automation
+    bot_token, allowed_user = _load_telegram_config()
+    if bot_token and allowed_user and _HTTPX:
+        try:
+            import asyncio
+            async def _do_send():
+                async with httpx.AsyncClient(timeout=15) as client:
+                    r = await client.post(
+                        f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                        json={"chat_id": allowed_user, "text": message}
+                    )
+                    return r.json()
+            result = asyncio.run(_do_send())
+            if result.get("ok"):
+                return f"Message sent to {receiver} via Telegram (Bot API)."
+            # Bot API failed — fall through to GUI
+            print(f"[SendMessage] Bot API failed ({result.get('description')}), trying GUI...")
+        except Exception as e:
+            print(f"[SendMessage] Bot API error ({e}), trying GUI...")
+
+    # Fallback: GUI automation
+    if not _PYAUTOGUI:
+        return "PyAutoGUI not installed and Telegram Bot API unavailable."
 
     if not _open_app("Telegram"):
         return "Could not open Telegram."

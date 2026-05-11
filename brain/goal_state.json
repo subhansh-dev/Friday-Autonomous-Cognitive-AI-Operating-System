@@ -1,0 +1,30 @@
+{
+  "meta": {
+    "version": 1,
+    "total_created": 1,
+    "total_completed": 0,
+    "last_update": "2026-05-11T22:38:44.192382"
+  },
+  "goals": {
+    "goal_35f6421a8541": {
+      "id": "goal_35f6421a8541",
+      "description": "Test goal",
+      "priority": 5,
+      "status": "pending",
+      "parent_goal": null,
+      "subgoals": [],
+      "created_at": "2026-05-11T22:38:44.192361",
+      "updated_at": "2026-05-11T22:38:44.192361",
+      "deadline": null,
+      "completed_at": null,
+      "tags": [],
+      "metrics": {
+        "progress": 0.0,
+        "attempts": 0,
+        "time_spent_s": 0.0,
+        "blockers": []
+      },
+      "implementation_plan": null
+    }
+  }
+}

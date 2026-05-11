@@ -1,0 +1,14 @@
+{
+  "meta": {
+    "version": 1,
+    "created": "2026-05-11T22:38:04.753992",
+    "last_update": "2026-05-11T22:38:04.754009",
+    "total_proposals": 0,
+    "total_applied": 0,
+    "total_rollbacks": 0,
+    "total_tests_run": 0
+  },
+  "proposals": {},
+  "module_performance": {},
+  "evolution_history": []
+}

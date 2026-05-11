@@ -250,21 +250,25 @@ class AGIOrchestrator:
         """Connect cognitive modules to orchestrator stages."""
         wiring = {
             "planning": ["analogy_engine", "creativity_engine", "hierarchical_aif",
-                         "intuition_engine"],
+                         "intuition_engine", "autonomous_planner", "goal_engine"],
             "reflection": ["causal_reasoner", "meta_learner", "narrative_intelligence",
-                           "metacognitive_monitor"],
-            "simulation": ["world_model", "enhanced_world_model"],
+                           "metacognitive_monitor", "introspection_engine"],
+            "simulation": ["world_model", "enhanced_world_model", "world_simulation"],
             "verification": ["neurosymbolic_reasoner", "code_reasoning_engine"],
-            "improvement": ["self_improve_engine", "transfer_learning"],
+            "improvement": ["self_improve_engine", "transfer_learning", "code_evolution"],
             "competition": ["module_competition"],
             "consciousness": ["integrated_info", "self_awareness"],
             "routing": ["model_router", "cognitive_integration"],
             "communication": ["findings_bus"],
             "emotional": ["emotional_regulation", "cognitive_appraisal"],
             "memory": ["neural_memory", "episodic_memory", "vector_memory",
-                       "memory_coordinator", "procedural_memory"],
+                       "memory_coordinator", "procedural_memory",
+                       "memory_consolidation", "associative_memory", "predictive_memory"],
             "metacognition": ["metacognitive_monitor", "cognitive_load"],
-            "exploration": ["curiosity", "proactive_engine"],
+            "exploration": ["curiosity", "proactive_engine", "intrinsic_motivation"],
+            "social": ["theory_of_mind"],
+            "abstraction": ["abstraction_engine"],
+            "multi_agent": ["multi_agent_orchestrator"],
             "code_reflection": ["code_reflector"],
             "security": ["cyber_reasoning"],
         }
@@ -486,6 +490,181 @@ class AGIOrchestrator:
             if hasattr(mod, "read_recent"):
                 findings = mod.read_recent(hours=24)
                 return {"recent_findings": len(findings or [])}
+
+        # ── AGI Pillar modules ────────────────────────────────────────
+
+        elif name == "multi_agent_orchestrator":
+            # Use a team-based approach for complex requests
+            teams = mod.list_teams() if hasattr(mod, "list_teams") else {}
+            if teams:
+                team_names = list(teams.keys())
+                # Pick first available team
+                selected_team = team_names[0] if team_names else None
+                if selected_team and hasattr(mod, "execute_team"):
+                    try:
+                        team_result = mod.execute_team(selected_team, request[:300], context=context[:200])
+                        return {"team": selected_team, "result": {k: str(v)[:100] for k, v in list(team_result.items())[:5]}}
+                    except Exception:
+                        pass
+            if hasattr(mod, "run_parallel"):
+                # Fallback: run with built-in agents
+                agents = ["reasoning", "analysis", "synthesis"]
+                try:
+                    result = mod.run_parallel(agents, request[:300], context=context[:200])
+                    return {"parallel_result": {k: str(v)[:100] for k, v in list(result.items())[:5]}}
+                except Exception:
+                    pass
+            if hasattr(mod, "get_stats"):
+                return mod.get_stats()
+
+        elif name == "goal_engine":
+            if hasattr(mod, "get_active_plans") and hasattr(mod, "get_stats"):
+                active = mod.get_active_plans() if hasattr(mod, "get_active_plans") else []
+                stats = mod.get_stats()
+                return {"active_goals": stats.get("active", 0), "total": stats.get("total_goals", 0),
+                        "completion_rate": stats.get("completion_rate", "0%")}
+            if hasattr(mod, "get_stats"):
+                return mod.get_stats()
+
+        elif name == "intrinsic_motivation":
+            if hasattr(mod, "get_motivation_state"):
+                state = mod.get_motivation_state()
+                return {"motivation_state": {k: str(v)[:60] for k, v in list(state.items())[:6]}}
+            if hasattr(mod, "generate_exploration_goals"):
+                goals = mod.generate_exploration_goals(count=3)
+                return {"exploration_goals": [str(g)[:80] for g in (goals or [])[:3]]}
+            if hasattr(mod, "get_stats"):
+                return mod.get_stats()
+
+        elif name == "autonomous_planner":
+            if hasattr(mod, "decompose_goal"):
+                try:
+                    plan = mod.decompose_goal(request[:300], context=context[:200], max_depth=2, iterations=20)
+                    plan_dict = plan.to_dict() if hasattr(plan, "to_dict") else {}
+                    return {"plan_id": plan_dict.get("id", "?"), "steps": len(plan_dict.get("steps", [])),
+                            "status": plan_dict.get("status", "?")}
+                except Exception as e:
+                    return {"error": str(e)[:100]}
+            if hasattr(mod, "get_next_actions"):
+                actions = mod.get_next_actions()
+                return {"next_actions": [str(a)[:80] for a in (actions or [])[:5]]}
+            if hasattr(mod, "get_stats"):
+                return mod.get_stats()
+
+        elif name == "memory_consolidation":
+            if hasattr(mod, "run_consolidation_cycle"):
+                try:
+                    cycle_result = mod.run_consolidation_cycle()
+                    return {"consolidation": {k: str(v)[:60] for k, v in list(cycle_result.items())[:5]}}
+                except Exception:
+                    pass
+            if hasattr(mod, "search_semantic"):
+                results = mod.search_semantic(request[:200], limit=5)
+                return {"semantic_matches": len(results or [])}
+            if hasattr(mod, "get_stats"):
+                return mod.get_stats()
+
+        elif name == "associative_memory":
+            if hasattr(mod, "recall"):
+                results = mod.recall(request[:200], depth=2)
+                recalled = []
+                for item in (results or [])[:5]:
+                    if isinstance(item, tuple) and len(item) >= 2:
+                        node, score = item[0], item[1]
+                        recalled.append({"content": str(getattr(node, "content", str(node)))[:60], "score": round(score, 2)})
+                    else:
+                        recalled.append(str(item)[:60])
+                return {"recalled": recalled, "count": len(results or [])}
+            if hasattr(mod, "get_stats"):
+                return mod.get_stats()
+
+        elif name == "predictive_memory":
+            if hasattr(mod, "predict_needed_context"):
+                predictions = mod.predict_needed_context(request[:200])
+                return {"predicted_context": [str(p)[:80] for p in (predictions or [])[:5]]}
+            if hasattr(mod, "preload_predictions"):
+                # Extract task type from request keywords
+                task_type = "general"
+                for kw in ["code", "research", "debug", "design", "analysis"]:
+                    if kw in request.lower():
+                        task_type = kw
+                        break
+                preloaded = mod.preload_predictions(task_type)
+                return {"preloaded": len(preloaded or []), "task_type": task_type}
+            if hasattr(mod, "get_stats"):
+                return mod.get_stats()
+
+        elif name == "theory_of_mind":
+            if hasattr(mod, "infer_intent"):
+                intent = mod.infer_intent(request[:300])
+                return {"inferred_intent": str(intent)[:200]}
+            if hasattr(mod, "infer_emotional_state"):
+                emotion = mod.infer_emotional_state(request[:300])
+                return {"inferred_emotion": str(emotion)[:100]}
+            if hasattr(mod, "predict_user_needs"):
+                needs = mod.predict_user_needs()
+                return {"predicted_needs": [str(n)[:80] for n in (needs or [])[:5]]}
+            if hasattr(mod, "get_stats"):
+                return mod.get_stats()
+
+        elif name == "abstraction_engine":
+            if hasattr(mod, "find_analogies"):
+                # Try to find cross-domain analogies
+                domains = mod.list_domains() if hasattr(mod, "list_domains") else []
+                if len(domains) >= 2:
+                    analogies = mod.find_analogies(domains[0], domains[1])
+                    return {"analogies": [str(a)[:80] for a in (analogies or [])[:3]], "domains": domains[:5]}
+            if hasattr(mod, "first_principles"):
+                try:
+                    fp = mod.first_principles(request[:300])
+                    return {"first_principles": {k: str(v)[:80] for k, v in list(fp.items())[:5]}}
+                except Exception:
+                    pass
+            if hasattr(mod, "counterfactual"):
+                try:
+                    cf = mod.counterfactual(request[:200], "alternative approach")
+                    return {"counterfactual": {k: str(v)[:80] for k, v in list(cf.items())[:5]}}
+                except Exception:
+                    pass
+            if hasattr(mod, "get_stats"):
+                return mod.get_stats()
+
+        elif name == "introspection_engine":
+            if hasattr(mod, "assess_confidence"):
+                assessment = mod.assess_confidence(request[:300])
+                return {"confidence_assessment": {k: str(v)[:60] for k, v in list(assessment.items())[:5]}}
+            if hasattr(mod, "detect_cognitive_biases"):
+                biases = mod.detect_cognitive_biases(request[:300], context[:200])
+                return {"biases_detected": len(biases or []),
+                        "top_biases": [str(b)[:80] for b in (biases or [])[:3]]}
+            if hasattr(mod, "epistemic_humility"):
+                humility = mod.epistemic_humility(request[:200])
+                return {"epistemic_humility": {k: str(v)[:60] for k, v in list(humility.items())[:5]}}
+            if hasattr(mod, "get_stats"):
+                return mod.get_stats()
+
+        elif name == "world_simulation":
+            if hasattr(mod, "predict_outcomes"):
+                predictions = mod.predict_outcomes(request[:300])
+                return {"predicted_outcomes": [str(p)[:80] for p in (predictions or [])[:5]]}
+            if hasattr(mod, "get_world_state"):
+                state = mod.get_world_state()
+                return {"world_state": {k: str(v)[:60] for k, v in list(state.items())[:5]}}
+            if hasattr(mod, "get_user_relevant_events"):
+                events = mod.get_user_relevant_events(limit=5)
+                return {"relevant_events": len(events or [])}
+            if hasattr(mod, "get_stats"):
+                return mod.get_stats()
+
+        elif name == "code_evolution":
+            if hasattr(mod, "propose_evolution"):
+                try:
+                    proposal = mod.propose_evolution(request[:300])
+                    return {"evolution_proposal": str(proposal)[:200]}
+                except Exception:
+                    pass
+            if hasattr(mod, "get_stats"):
+                return mod.get_stats()
 
         # ── Newly wired modules ──────────────────────────────────────
 

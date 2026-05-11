@@ -1,0 +1,23 @@
+{
+  "meta": {
+    "version": 1,
+    "created": "2026-05-11T22:38:04.749057",
+    "last_update": "2026-05-11T22:38:04.749082",
+    "total_interactions": 0
+  },
+  "user_model": {
+    "expertise_level": {},
+    "preferences": {},
+    "emotional_state": "neutral",
+    "emotional_history": [],
+    "communication_style": "adaptive",
+    "beliefs": {},
+    "goals": [],
+    "interests": [],
+    "annoyances": [],
+    "interaction_count": 0,
+    "topics_discussed": {},
+    "style_signals": {}
+  },
+  "interaction_history": []
+}

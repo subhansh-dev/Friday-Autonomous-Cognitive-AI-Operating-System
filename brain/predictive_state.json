@@ -1,0 +1,20 @@
+{
+  "meta": {
+    "version": 1,
+    "created": "2026-05-11T22:38:04.747572",
+    "last_update": "2026-05-11T22:41:24.578897",
+    "total_predictions": 1,
+    "total_hits": 0,
+    "total_misses": 0
+  },
+  "task_patterns": {},
+  "prediction_history": [
+    {
+      "prediction_id": "a3c4083e94cf",
+      "context": "Predict what context is needed",
+      "predicted_tags": [],
+      "was_useful": null,
+      "timestamp": "2026-05-11T22:41:24.578886"
+    }
+  ]
+}

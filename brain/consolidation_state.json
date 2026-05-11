@@ -1,0 +1,14 @@
+{
+  "meta": {
+    "version": 1,
+    "created": "2026-05-11T22:38:04.745145",
+    "last_update": "2026-05-11T22:41:24.578763",
+    "total_cycles": 1,
+    "total_consolidated": 0,
+    "total_compressed": 0,
+    "total_decayed": 0
+  },
+  "episodic_buffer": [],
+  "semantic_store": [],
+  "compression_log": []
+}

@@ -175,16 +175,22 @@ class AuthorizationManager:
     def revoke_consent(self, target: str) -> bool:
         """Revoke active consent for a target."""
         self._target_guard.revoke(target)
+        revoked = False
         if target in self._active_consents:
             del self._active_consents[target]
-            return True
-        return False
+            revoked = True
+        # Also remove from legacy consent log active tracking
+        self._consent_log = [r for r in self._consent_log if r.get("target") != target]
+        self._save_consent_log()
+        return revoked
 
     def revoke_all(self) -> int:
         """Revoke all active consents."""
         count = self._target_guard.revoke()
         count += len(self._active_consents)
         self._active_consents.clear()
+        self._consent_log.clear()
+        self._save_consent_log()
         return count
 
     def get_active_consents(self) -> list[dict]:

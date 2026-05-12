@@ -1564,6 +1564,38 @@ source friday_env/bin/activate
 pip install -r requirements.txt
 ```
 
+This installs all **core dependencies** and works on Python 3.12, 3.13, and 3.14.
+
+**Optional:** Install additional features as needed:
+
+```bash
+# Gesture ML (Python 3.12 only — TensorFlow has no 3.13+ wheels)
+pip install tensorflow mediapipe scikit-learn
+
+# AI pipeline (LangChain chains)
+pip install langchain langgraph tiktoken
+
+# Vector memory & benchmarks (sentence-transformers)
+pip install sentence-transformers huggingface-hub datasets
+
+# AC control (pick your brand)
+pip install thinq2          # LG
+pip install pydaikin        # Daikin
+pip install broadlink       # IR-based
+
+# Cloud services
+pip install boto3           # AWS
+pip install azure-storage-blob azure-identity  # Azure
+```
+
+Or install everything at once (may fail on Python 3.13+):
+
+```bash
+pip install -r requirements-optional.txt
+```
+
+> **⚠️ Python 3.13/3.14 Users:** TensorFlow and MediaPipe don't have wheels yet. The gesture music system and some holo features require these. Everything else works fine. Skip those packages if you're on 3.13+.
+
 ### Step 4 — Install Playwright browsers
 
 ```bash

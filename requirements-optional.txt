@@ -1,0 +1,73 @@
+# ── FRIDAY OPTIONAL DEPENDENCIES ──────────────────────────────────
+# Install only what you need. These may not have wheels for Python 3.13+.
+# Usage: pip install -r requirements-optional.txt
+#
+# Or install individual groups:
+#   pip install tensorflow mediapipe scikit-learn   # Gesture ML
+#   pip install langchain langgraph tiktoken         # AI pipeline
+#   pip install sentence-transformers huggingface-hub datasets  # Vector memory / benchmarks
+#   pip install thinq2 broadlink pydaikin pymelcloud aircloudy   # AC control
+#   pip install boto3                                # AWS
+#   pip install azure-storage-blob azure-identity    # Azure
+
+# ── GESTURE / ML (Python 3.12 only — no 3.13+ wheels) ────────────
+# Used by: gesture_music_system/ (LSTM training + inference)
+tensorflow>=2.15.0
+scikit-learn>=1.3.0
+
+# ── MEDIAPIPE (check Python version support) ──────────────────────
+# Used by: gesture_music_system/, holo_builder, holo_earth, holographic_map
+# Works on 3.12, check https://pypi.org/project/mediapipe/ for 3.13+ support
+mediapipe>=0.10.0
+imutils>=0.5.4
+
+# ── AI PIPELINE (optional LLM chains) ─────────────────────────────
+# Used by: actions/ai_pipeline.py, brain/integrations.py
+# All have try/except fallbacks
+langchain>=1.2.0
+langchain-core>=1.3.0
+langgraph>=1.1.0
+tiktoken>=0.7.0
+
+# ── VECTOR MEMORY / BENCHMARKS ────────────────────────────────────
+# Used by: brain/vector_memory.py, brain/benchmark_runner.py, brain/integrations.py
+# All have try/except fallbacks
+huggingface_hub>=0.24.0
+datasets>=2.14.0
+sentence-transformers>=3.0.0
+
+# ── AC / APPLIANCE CONTROL ────────────────────────────────────────
+# Used by: actions/ac_controller.py — all lazy-loaded with try/except
+# Pick the one for your AC brand:
+broadlink>=0.18.0        # IR-based AC control
+pydaikin>=2.7.0          # Daikin AC
+pymelcloud>=0.1.0        # Mitsubishi Electric
+aircloudy>=0.1.0         # Hitachi AirCloud
+thinq2>=0.5.0            # LG ThinQ (may not support Python 3.13+)
+
+# ── CLOUD SERVICES ────────────────────────────────────────────────
+# Used by: brain/integrations.py — all lazy-loaded
+boto3>=1.34.0            # AWS
+azure-core>=1.30.0       # Azure
+azure-identity>=1.17.0   # Azure
+azure-storage-blob>=12.22.0  # Azure
+
+# ── CACHING & QUEUE ──────────────────────────────────────────────
+# Used by: brain/integrations.py — lazy-loaded
+redis>=5.0.0
+rq>=2.0.0
+
+# ── WINDOWS ONLY ──────────────────────────────────────────────────
+# Used by: actions/computer_settings.py, actions/verification.py, etc.
+# All have try/except with graceful degradation
+pywin32>=306  ; platform_system == 'Windows'
+pywinauto>=0.6.8  ; platform_system == 'Windows'
+win10toast>=0.9  ; platform_system == 'Windows'
+pygetwindow>=0.0.9  ; platform_system == 'Windows'
+pycaw>=0.0.5  ; platform_system == 'Windows'
+comtypes>=1.4.0  ; platform_system == 'Windows'
+
+# ── NETWORK / SECURITY ───────────────────────────────────────────
+# Used by: cyber/ modules — lazy-loaded
+dnspython>=2.6.0
+cryptography>=42.0.0

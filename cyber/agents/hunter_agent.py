@@ -96,6 +96,12 @@ class HunterAgent(BaseAgent):
         if mode == "code_analysis":
             findings = self._code_analysis(target, context)
         elif mode == "dynamic_scan":
+            # ── Authorization gate for live scanning ──
+            from cyber.authorization import require_authorization, AuthorizationError
+            try:
+                require_authorization(target, "nuclei")
+            except AuthorizationError as e:
+                return self._build_result(error=str(e))
             findings = self._dynamic_scan(target, context)
         else:
             findings = self._code_analysis(target, context)

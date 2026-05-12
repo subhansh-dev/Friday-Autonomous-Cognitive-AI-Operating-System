@@ -343,6 +343,16 @@ class BusinessLogicTester:
         """
         start = time.time()
 
+        # ── Authorization gate ──
+        from cyber.authorization import require_authorization, AuthorizationError
+        auth_target = target or (endpoints[0].get("url", "") if endpoints else "")
+        if auth_target:
+            try:
+                require_authorization(auth_target, "business_logic")
+            except AuthorizationError as e:
+                logger.warning(f"[BizLogic] Authorization denied: {e}")
+                return []
+
         # Default endpoints if none provided
         if not endpoints:
             endpoints = self._discover_endpoints(target)

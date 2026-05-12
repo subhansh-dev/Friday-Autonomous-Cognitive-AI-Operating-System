@@ -49,6 +49,13 @@ class ReconAgent(BaseAgent):
         if not target:
             return self._build_result(error="No target specified")
 
+        # ── Authorization gate ──
+        from cyber.authorization import require_authorization, AuthorizationError
+        try:
+            require_authorization(target, "recon_full")
+        except AuthorizationError as e:
+            return self._build_result(error=str(e))
+
         self.record_decision(
             decision=f"Starting recon on {target}",
             reasoning="First phase: map the attack surface",

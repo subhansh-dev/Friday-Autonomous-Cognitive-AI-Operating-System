@@ -789,6 +789,25 @@ def _handle_security_action(parameters: dict) -> str:
             if traversal_err:
                 return traversal_err
 
+    # ── Authorization gate for ALL live network operations ──────
+    LIVE_ACTIONS = {
+        "port_scan", "port_scan_ps", "nmap_scan", "nmap_script",
+        "subdomain_enum", "subfinder", "httpx_probe",
+        "dns_info", "dnsx", "ssl_info", "whois",
+        "web_fuzz_ps", "ffuf", "gobuster",
+        "nuclei", "sqlmap", "whatweb", "wpscan", "gospider",
+        "http_archive", "nikto", "katana", "naabu",
+        "header_check", "cors_check", "recon_full",
+    }
+    if action in LIVE_ACTIONS:
+        from cyber.authorization import require_authorization, AuthorizationError
+        auth_target = target or urls_str or domains_str
+        if auth_target:
+            try:
+                require_authorization(auth_target, action)
+            except AuthorizationError as e:
+                return str(e)
+
     # ── Health / Status ──────────────────────────────────────────
     if action == "health":
         wsl_ok = _check_wsl() if IS_WINDOWS else False

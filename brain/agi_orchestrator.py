@@ -507,8 +507,8 @@ class AGIOrchestrator:
                     except Exception:
                         pass
             if hasattr(mod, "run_parallel"):
-                # Fallback: run with built-in agents
-                agents = ["reasoning", "analysis", "synthesis"]
+                # Fallback: run with valid built-in agents
+                agents = ["code_reviewer", "security_engineer", "senior_developer"]
                 try:
                     result = mod.run_parallel(agents, request[:300], context=context[:200])
                     return {"parallel_result": {k: str(v)[:100] for k, v in list(result.items())[:5]}}

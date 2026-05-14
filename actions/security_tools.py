@@ -582,6 +582,7 @@ def _run_native_streaming(cmd: str, timeout: int = 120) -> str:
                 pass
             done_event.set()
             _safe_log(player, "[Cyber] ✗ Timed out")
+            return json.dumps({"error": f"Timed out after {timeout}s"})
 
         proc.wait(timeout=5)
         output = "\n".join(output_lines)
@@ -602,7 +603,7 @@ def _run_native(cmd: str, timeout: int = 120) -> str:
     try:
         r = subprocess.run(
             ["bash", "-c", cmd],
-            capture_output=True, text=True, encoding="utf-8", timeout=timeout,
+            capture_output=True, text=True, timeout=timeout,
             encoding='utf-8', errors='replace',
         )
         out = (r.stdout or "").strip()
@@ -676,7 +677,7 @@ def _run_powershell(cmd: str, params: dict = None) -> str:
             r = subprocess.run(
                 [ps_cmd, "-NoProfile", "-ExecutionPolicy", "Bypass",
                  "-File", str(PS_KIT), cmd, params_json],
-                capture_output=True, text=True, encoding="utf-8",
+                capture_output=True, text=True,
                 encoding='utf-8', errors='replace',
                 timeout=120,
             )

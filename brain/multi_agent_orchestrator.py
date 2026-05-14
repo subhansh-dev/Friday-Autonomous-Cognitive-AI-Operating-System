@@ -57,6 +57,23 @@ MAX_AGENT_OUTPUT = 2000        # chars per agent in cross-pollination
 SWARM_MAX_AGENTS = 5           # limit agents per swarm refinement round
 SWARM_DEFAULT_ROUNDS = 5       # default swarm refinement rounds
 
+# Cached API client (singleton across all agent calls)
+_api_client = None
+_api_client_lock = threading.Lock()
+
+
+def _get_api_client():
+    """Get or create a singleton genai.Client."""
+    global _api_client
+    if _api_client is None:
+        with _api_client_lock:
+            if _api_client is None:
+                config_path = BASE_DIR / "config" / "api_keys.json"
+                api_key = json.loads(config_path.read_text()).get("gemini_api_key", "")
+                from google import genai
+                _api_client = genai.Client(api_key=api_key)
+    return _api_client
+
 
 # ── Data Classes ───────────────────────────────────────────────────────────
 
@@ -287,11 +304,8 @@ class MultiAgentOrchestrator:
             from google.genai import types
             from actions.resilience import api_retry
 
-            # Get API client
-            config_path = BASE_DIR / "config" / "api_keys.json"
-            api_key = json.loads(config_path.read_text()).get("gemini_api_key", "")
-            from google import genai
-            client = genai.Client(api_key=api_key)
+            # Use shared singleton client
+            client = _get_api_client()
 
             def _call():
                 cfg = types.GenerateContentConfig(

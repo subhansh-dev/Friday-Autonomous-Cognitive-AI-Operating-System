@@ -242,7 +242,7 @@ F.R.I.D.A.Y. implements a layered cognitive architecture inspired by human neuro
 │  ┌─────────────────────┐      ┌──────────────────────────┐     │
 │  │ RECON → HUNTER      │      │ RECON → HUNT → CHAIN     │     │
 │  │ → ADVERSARIAL       │ ───► │ → VERIFY (3-round)       │     │
-│  │ → EXPLOIT           │ Bus  │ → GRADE (5-axis)         │     │
+│  │ → VALIDATE          │ Bus  │ → GRADE (5-axis)         │     │
 │  │ → TRIAGE            │      │ → REPORT                 │     │
 │  │ → AI_SECURITY       │      └──────────────────────────┘     │
 │  │ → SUPPLY_CHAIN      │                                       │
@@ -787,9 +787,11 @@ F.R.I.D.A.Y. includes an **optional multi-layered security architecture** with 4
 ├─────────────────────────────────────────────────────────────────┤
 │  cyber/target_guard.py   │  Target classification & access control│
 │  cyber/authorization.py  │  Two-layer auth (guard + consent gate) │
+│  cyber/pipeline.py       │  Main cyber pipeline orchestrator      │
 │  cyber/agents/           │  7 specialized security agents         │
-│  cyber/exploit_templates/│  9 vuln-class exploit templates        │
+│  cyber/exploit_templates/│  9 vuln-class PoC validation templates│
 │  cyber/                  │  Engine, FSM, data flow, business logic│
+│  cyber/mcp_server.py     │  MCP security tool server              │
 ├─────────────────────────────────────────────────────────────────┤
 │  Pipeline: RECON → HUNT → CHAIN → VERIFY → GRADE → REPORT       │
 │  Modes: fast / standard / deep / loop / code                     │
@@ -816,15 +818,16 @@ Each agent has a narrow role and tool whitelist — specialization prevents hall
 
 | Agent | Role | Tools |
 |-------|------|-------|
+| `base_agent.py` | Base agent class with shared logic and tool whitelist | — |
 | `recon_agent.py` | Subdomain enum, live host probing, port scanning, tech detection | subfinder, httpx, nmap, whatweb, gospider, katana |
 | `hunter_agent.py` | Vulnerability hunting — code analysis (regex) + dynamic scanning (nuclei, ffuf) | regex_scan, nuclei, ffuf, gobuster, sqlmap |
-| `exploit_agent.py` | PoC execution — validates findings with real exploits | exploit_engine, http_client |
-| `chain_agent.py` | Builds A→B exploit chains from individual findings | findings_reader |
+| `exploit_agent.py` | PoC validation — confirms findings with real payloads | exploit_engine, http_client |
+| `chain_agent.py` | Builds A→B attack chains from individual findings | findings_reader |
 | `verify_agent.py` | 3-round adversarial verification (skeptic → balanced → final) | exploit_engine |
 | `grader_agent.py` | 5-axis scoring: impact, confidence, exploitability, novelty, report quality | findings_reader |
 | `report_agent.py` | Generates submission-ready security reports | findings_reader, file_writer |
 
-### 2. Exploit Engine (`cyber/exploit_engine.py`) — Live PoC Execution
+### 2. Validation Engine (`cyber/exploit_engine.py`) — Live PoC Verification
 
 Validates findings with real HTTP requests. 9 vulnerability class templates, non-destructive probing only.
 
@@ -869,32 +872,35 @@ Finds vulnerabilities that pattern-based scanners structurally cannot detect:
 1. **Invariant Discovery** — Derives security invariants from API endpoints (authorization, multi-tenancy, state machines, business rules)
 2. **Fuzzer Generation** — Creates targeted test scenarios to violate each invariant
 3. **Violation Detection** — Executes fuzzers against running app, checks for violations
-4. **Exploit Synthesis** — Generates complete PoC from confirmed violations
+4. **PoC Synthesis** — Generates complete proof-of-concept from confirmed violations
 
 ### 6. Supporting Infrastructure
 
 | Module | Lines | Description |
 |--------|-------|-------------|
+| `pipeline.py` | — | Main cyber pipeline orchestrator — coordinates all phases |
 | `wave_manager.py` | 254 | Parallel wave coordination. Splits attack surface into waves, prevents double-testing |
 | `harness_modes.py` | 277 | 5 speed/thoroughness modes: **fast** (quick triage), **standard** (default), **deep** (max thoroughness), **loop** (repeat until budget hit), **code** (white-box) |
-| `correlator.py` | 373 | Static-dynamic correlation. Feeds static findings into exploit engine for live validation |
+| `correlator.py` | 373 | Static-dynamic correlation. Feeds static findings into validation engine for live confirmation |
 | `dead_end_tracker.py` | 213 | Negative result memory. JSONL log so later waves don't repeat dead leads |
 | `bypass_tables.py` | 153 | Reference tables: Firebase, GraphQL, JWT, OAuth, SSRF, REST API, WordPress, injection |
+| `powershell_kit.ps1` | — | PowerShell toolkit for Windows security operations |
+| `setup_kali.sh` | — | Kali Linux environment setup script |
 
 ### 7. Mythos Pipeline (`cyber/mythos_pipeline.py`) — Static Code Analysis
 
 7-agent pipeline for code-level vulnerability detection:
 
 ```
-RECON → HUNTER → ADVERSARIAL → EXPLOIT → TRIAGE → AI_SECURITY → SUPPLY_CHAIN
+RECON → HUNTER → ADVERSARIAL → VALIDATE → TRIAGE → AI_SECURITY → SUPPLY_CHAIN
 ```
 
 | Agent | Phase | What It Scans |
 |-------|-------|--------------|
 | **RECON** | 1 | File discovery, tech stack detection, entry points |
 | **HUNTER** | 2 | SQL injection, command injection, path traversal, hardcoded secrets, unsafe deserialization, weak crypto |
-| **ADVERSARIAL** | 3 | Exploit chain potential, auth bypass patterns |
-| **EXPLOIT** | 4 | Chain validation, confidence escalation |
+| **ADVERSARIAL** | 3 | Attack chain potential, auth bypass patterns |
+| **VALIDATE** | 4 | Chain validation, confidence escalation |
 | **TRIAGE** | 5 | CVSS scoring, severity classification |
 | **AI_SECURITY** | 6 | Prompt injection risk, unsafe eval/exec, unvalidated tool execution |
 | **SUPPLY_CHAIN** | 7 | Exposed secrets, unpinned dependencies, .env in git |
@@ -911,7 +917,7 @@ RECON → HUNT → CHAIN → VERIFY (3-round) → GRADE (5-axis) → REPORT
 |-------|-------------|
 | **RECON** | Processes attack surface data, auto-ingests Mythos findings, generates targeted hypotheses |
 | **HUNT** | Records findings with full evidence trails |
-| **CHAIN** | Discovers exploit chains — low-severity findings that combine into critical exploits |
+| **CHAIN** | Discovers attack chains — low-severity findings that combine into critical vulnerabilities |
 | **VERIFY** | **3-round adversarial verification**: Skeptic (default="not real") → Balanced (catch false negatives) → Final (fresh PoC) |
 | **GRADE** | **5-axis scoring**: Impact, Confidence, Exploitability, Novelty, Report Quality → SUBMIT/HOLD/SKIP |
 | **REPORT** | Submission-ready report with PoC steps, CVSS, and severity breakdown |
@@ -954,7 +960,7 @@ F.R.I.D.A.Y. enforces **target-level access control** via `cyber/target_guard.py
 | **External targets** | 🔒 Requires typed consent: *"I own this target or have written authorization to test it"* |
 | **Cloud metadata** (169.254.169.254, metadata.google.internal) | 🚫 **Always blocked** — no consent possible |
 
-Authorization is enforced at **every layer** — pipeline, security tools, individual agents, and exploit engine. All decisions logged to `data/audit_log.json`. See [LEGAL.md](LEGAL.md) for full legal disclaimers.
+Authorization is enforced at **every layer** — pipeline, security tools, individual agents, and validation engine. All decisions logged to `data/audit_log.json`. See [LEGAL.md](LEGAL.md) for full legal disclaimers.
 
 ---
 
@@ -1356,15 +1362,17 @@ friday/
 ├── cyber/                     # 🛡️ Cyber Security Toolkit (10,700+ lines)
 │   ├── target_guard.py        #   Target classification & access control
 │   ├── authorization.py       #   Two-layer auth (guard + consent gate)
+│   ├── pipeline.py            #   Main cyber pipeline orchestrator
 │   ├── agents/                #   7 specialized security agents
+│   │   ├── base_agent.py      #     Base agent class with shared logic
 │   │   ├── recon_agent.py     #     Subdomain enum, port scanning, tech detection
 │   │   ├── hunter_agent.py    #     Vuln hunting (code + dynamic)
-│   │   ├── exploit_agent.py   #     PoC execution specialist
-│   │   ├── chain_agent.py     #     A→B exploit chain builder
+│   │   ├── exploit_agent.py   #     PoC validation specialist
+│   │   ├── chain_agent.py     #     A→B attack chain builder
 │   │   ├── verify_agent.py    #     3-round adversarial verification
 │   │   ├── grader_agent.py    #     5-axis scoring (SUBMIT/HOLD/SKIP)
 │   │   └── report_agent.py    #     Submission-ready reports
-│   ├── exploit_templates/     #   9 vuln-class exploit templates
+│   ├── exploit_templates/     #   9 vuln-class PoC validation templates
 │   │   ├── sqli.py            #     SQL injection (blind, time, error, UNION)
 │   │   ├── xss.py             #     Cross-site scripting (reflected, DOM, polyglot)
 │   │   ├── ssrf.py            #     Server-side request forgery
@@ -1374,9 +1382,10 @@ friday/
 │   │   ├── path_traversal.py  #     LFI / directory traversal
 │   │   ├── cors.py            #     CORS misconfiguration
 │   │   ├── open_redirect.py   #     Open redirect
-│   │   └── template.py        #     Base exploit class
-│   ├── exploit_engine.py      #   Live PoC execution engine
+│   │   └── template.py        #     Base PoC template class
+│   ├── exploit_engine.py      #   Live PoC verification engine
 │   ├── mcp_state_machine.py   #   FSM controller (717 lines)
+│   ├── mcp_server.py          #   MCP security tool server
 │   ├── data_flow_analyzer.py  #   Source→sink data flow tracing
 │   ├── business_logic_tester.py # Invariant discovery + fuzzers
 │   ├── ast_parser.py          #   Multi-lang AST extraction (799 lines)
@@ -1389,7 +1398,8 @@ friday/
 │   ├── dead_end_tracker.py    #   Negative result memory
 │   ├── bypass_tables.py       #   8 vuln-category reference tables
 │   ├── mythos_pipeline.py     #   7-agent static code analysis
-│   └── mcp_server.py          #   MCP security tool server
+│   ├── powershell_kit.ps1     #   PowerShell toolkit for Windows
+│   └── setup_kali.sh          #   Kali Linux environment setup
 │
 ├── security/                  # 🔒 Permission & audit (1,311 lines)
 │   ├── permission_manager.py  #   Tool access control
@@ -1709,7 +1719,7 @@ FRIDAY: *runs the scan*
 
 **What requires authorization:**
 - All network operations (port scanning, subdomain enum, web fuzzing, etc.)
-- Exploit validation and business logic testing
+- PoC validation and business logic testing
 - Any operation that sends requests to external targets
 
 **What does NOT require authorization:**
@@ -1724,12 +1734,12 @@ FRIDAY: *runs the scan*
 - Consent can be revoked at any time
 
 **Auth is enforced at every layer:**
-- `pipeline.run()` — checks before running exploit validation
+- `pipeline.run()` — checks before running PoC validation
 - `security_tools()` — checks before all 25+ network actions
 - `ReconAgent` — checks before nmap/subfinder
-- `ExploitAgent` — checks before PoC execution
+- `ExploitAgent` — checks before PoC validation
 - `HunterAgent` — checks before dynamic scans (nuclei/ffuf)
-- `ExploitEngine` — checks before exploit execution
+- `ExploitEngine` — checks before payload execution
 - `BusinessLogicTester` — checks before live HTTP requests
 
 ### Voice Control
@@ -1750,7 +1760,7 @@ voice_control(voice="puck")
 
 - Multi-agent vulnerability scanning (Mythos 7-agent pipeline)
 - Cognitive security reasoning with adversarial verification
-- Exploit chain discovery and analysis
+- Attack chain discovery and analysis
 - Pattern-based vulnerability detection
 - CVSS scoring and severity assessment
 - Supply chain security scanning
@@ -1775,7 +1785,7 @@ This software is intended **EXCLUSIVELY** for:
 - Attacking systems without explicit authorization
 - Any form of cybercrime
 - Unauthorized access to computer systems
-- Malicious exploitation of vulnerabilities
+- Malicious exploitation of vulnerabilities (unauthorized)
 - Any activity that violates applicable laws or regulations
 - Gaining unauthorized access to data or systems
 - Any harmful or malicious purposes
@@ -1816,7 +1826,7 @@ This software is intended **EXCLUSIVELY** for:
 
 If you encounter security vulnerabilities while using this tool:
 
-- **DO NOT** exploit them for malicious purposes
+- **DO NOT** use them for malicious purposes
 - **DO** report them to the system owner/vendor
 - **DO** follow responsible disclosure practices
 - **DO NOT** share sensitive findings publicly without coordination

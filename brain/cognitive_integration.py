@@ -480,11 +480,11 @@ class CognitiveIntegration:
 
         # ── Step 4: Causal Reasoning ─────────────────────────────────
         causal_success, causal_result = self._call_module(
-            "causal", "analyze_causality", request
+            "causal", "do_calculus", "predict", request[:200]
         )
         if causal_success and causal_result:
             response.add_trace_step(
-                "causal", "analyze_causality",
+                "causal", "do_calculus",
                 str(causal_result)[:150],
                 (_timestamp() - pipeline_start) * 1000, 0.0
             )
@@ -496,11 +496,11 @@ class CognitiveIntegration:
 
         # ── Step 5: Analogical Reasoning ─────────────────────────────
         analogy_success, analogy_result = self._call_module(
-            "analogy", "find_analogies", request, context
+            "analogy", "score_analogy", request[:200], context
         )
         if analogy_success and analogy_result:
             response.add_trace_step(
-                "analogy", "find_analogies",
+                "analogy", "score_analogy",
                 str(analogy_result)[:150],
                 (_timestamp() - pipeline_start) * 1000, 0.0
             )
@@ -528,7 +528,8 @@ class CognitiveIntegration:
 
         # ── Step 7: World Model Simulation ───────────────────────────
         wm_success, wm_result = self._call_module(
-            "world_model", "simulate_outcome", request, context
+            "world_model", "evaluate_plan",
+            [request[:100]]
         )
         if wm_success and wm_result:
             response.add_trace_step(
@@ -544,7 +545,8 @@ class CognitiveIntegration:
 
         # ── Step 8: Neurosymbolic Verification ───────────────────────
         neuro_success, neuro_result = self._call_module(
-            "neurosymbolic", "verify_reasoning", request, gathered_evidence
+            "neurosymbolic", "check_consistency",
+            [{"statement": str(ev.get("data", ""))[:100], "confidence": ev.get("weight", 0.5)} for ev in gathered_evidence]
         )
         if neuro_success and neuro_result:
             response.add_trace_step(
@@ -674,7 +676,8 @@ class CognitiveIntegration:
 
         # Record to episodic memory
         self._call_module(
-            "episodic", "store_episode",
+            "episodic", "encode_event",
+            "cognitive_response",
             f"Request: {request[:100]} | Response: {response.response[:100]}",
             context.get("domain", "general"),
         )
@@ -693,21 +696,30 @@ class CognitiveIntegration:
 
         # Record learning signal
         self._call_module(
-            "learning", "record_experience",
-            request[:200], response.response[:200], response.confidence,
+            "learning", "record_event",
+            "cognitive_response",
+            {"request": request[:200], "response": response.response[:200], "confidence": response.confidence},
         )
 
         # Publish to global workspace
-        self._call_module(
-            "global_workspace", "publish_event",
-            event_type="cognitive_response",
-            data={
-                "request": request[:100],
-                "confidence": response.confidence,
-                "path": response.path,
-                "modules": response.modules_used,
-            },
-        )
+        try:
+            from brain.workspace_events import WorkspaceEvent, EventType
+            event = WorkspaceEvent(
+                source="cognitive_integration",
+                type=EventType.TOOL_CALL,
+                content={
+                    "request": request[:100],
+                    "confidence": response.confidence,
+                    "path": response.path,
+                    "modules": response.modules_used,
+                },
+                importance=response.confidence,
+            )
+            ws = self._get_module("global_workspace")
+            if ws and hasattr(ws, "push"):
+                ws.push(event)
+        except Exception:
+            pass
 
         # Register idle
         self._call_module(
@@ -823,8 +835,8 @@ class CognitiveIntegration:
 
         # Update learning
         self._call_module(
-            "learning", "record_outcome",
-            request_hash, actual_outcome, actual_success,
+            "learning", "record_tool_result",
+            "cognitive_response", actual_success, actual_outcome[:200],
         )
 
         # Update somatic markers if emotional context existed
@@ -842,10 +854,10 @@ class CognitiveIntegration:
         # Record in procedural memory if successful
         if actual_success:
             self._call_module(
-                "procedural", "store_procedure",
+                "procedural", "learn_procedure",
                 original.get("request_hash", ""),
-                original.get("modules_used", []),
-                actual_outcome[:200],
+                [{"module": m} for m in original.get("modules_used", [])],
+                {"outcome": actual_outcome[:200]},
             )
 
     # ── Statistics ──────────────────────────────────────────────────────

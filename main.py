@@ -1168,6 +1168,23 @@ TOOL_DECLARATIONS = [
         }
     },
     {
+        "name": "multi_agent",
+        "description": "Run multiple expert agents simultaneously for complex tasks. Supports 6 modes: parallel (all at once), debate (agents argue and refine), pipeline (A→B→C), voting (majority wins), specialist (best agent auto-selected), swarm (iterative refinement). Use for tasks requiring multiple perspectives like full-stack builds, code reviews, security audits, or research.",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "action": {"type": "STRING", "description": "run | run_team | list_teams | list_agents | stats"},
+                "team": {"type": "STRING", "description": "Pre-built team name: full_stack_build, code_review, research, design, incident_response, security_audit, testing, all"},
+                "agents": {"type": "ARRAY", "items": {"type": "STRING"}, "description": "List of agent names for custom runs"},
+                "task": {"type": "STRING", "description": "The task for the agents"},
+                "context": {"type": "STRING", "description": "Optional context/code/data"},
+                "mode": {"type": "STRING", "description": "Execution mode: parallel | debate | pipeline | voting | specialist | swarm"},
+                "rounds": {"type": "INTEGER", "description": "Debate/swarm rounds (default: 3)"}
+            },
+            "required": ["action"]
+        }
+    },
+    {
         "name": "computer_control",
         "description": "Input-level computer control: type text, click, hotkeys, scroll, move mouse, screenshots, find elements on screen. For system-level actions (volume, brightness, WiFi, shutdown) use computer_settings.",
         "parameters": {
@@ -4685,6 +4702,94 @@ class FridayLive:
             lambda: agency_agent_action(parameters=args, player=self.ui),
             timeout=120)
         return r if r is not None else "agency_agent returned no result."
+
+    @register_tool("multi_agent")
+    async def _tool_multi_agent(self, args):
+        """Run multiple agents simultaneously via the multi-agent orchestrator."""
+        if not self._multi_agent_orchestrator:
+            return "Multi-agent orchestrator not available."
+        try:
+            action = args.get("action", "run")
+            orchestrator = self._multi_agent_orchestrator
+
+            if action == "list_teams":
+                teams = orchestrator.list_teams()
+                lines = ["Available agent teams:\n"]
+                for name, info in teams.items():
+                    lines.append(f"  {name}: {info['agent_count']} agents ({info['mode']})")
+                return "\n".join(lines)
+
+            if action == "list_agents":
+                return (
+                    f"{len(orchestrator.ALL_AGENTS)} agents available:\n"
+                    + ", ".join(orchestrator.ALL_AGENTS)
+                )
+
+            if action == "stats":
+                stats = orchestrator.get_stats()
+                return json.dumps(stats, indent=2)
+
+            if action == "run_team":
+                team = args.get("team", "")
+                task = args.get("task", "")
+                context = args.get("context", "")
+                if not team or not task:
+                    return "Specify 'team' and 'task'. Use action='list_teams' to see options."
+                result = await self._run_long_tool_with_timeout(
+                    lambda: orchestrator.execute_team(team, task, context),
+                    timeout=300)
+                if isinstance(result, dict) and "error" in result:
+                    return result["error"]
+                # Format result for readability
+                lines = [f"Team '{team}' completed ({result.get('mode', '?')} mode):\n"]
+                results_data = result.get("results", {})
+                if isinstance(results_data, dict):
+                    if "positions" in results_data:
+                        for agent, output in results_data["positions"].items():
+                            lines.append(f"[{agent}]: {str(output)[:300]}")
+                        if "synthesis" in results_data:
+                            lines.append(f"\n--- SYNTHESIS ---\n{results_data['synthesis'][:500]}")
+                    elif "stages" in results_data:
+                        for agent, output in results_data["stages"].items():
+                            lines.append(f"[{agent}]: {str(output)[:300]}")
+                        if "final_output" in results_data:
+                            lines.append(f"\n--- FINAL ---\n{results_data['final_output'][:500]}")
+                    else:
+                        for agent, res in results_data.items():
+                            output = res.output if hasattr(res, "output") else str(res)
+                            lines.append(f"[{agent}]: {str(output)[:300]}")
+                return "\n".join(lines)
+
+            if action == "run":
+                agents = args.get("agents", [])
+                task = args.get("task", "")
+                mode = args.get("mode", "parallel")
+                context = args.get("context", "")
+                rounds = args.get("rounds", 3)
+                if not agents or not task:
+                    return "Specify 'agents' (list) and 'task'."
+                result = await self._run_long_tool_with_timeout(
+                    lambda: orchestrator.execute_custom(
+                        agents, task, mode=mode, context=context, rounds=rounds),
+                    timeout=300)
+                if isinstance(result, dict) and "error" in result:
+                    return result["error"]
+                # Format
+                lines = [f"Multi-agent ({mode}) completed:\n"]
+                for key, val in result.items():
+                    if isinstance(val, dict):
+                        for agent, output in val.items():
+                            out_str = output.output if hasattr(output, "output") else str(output)
+                            lines.append(f"[{agent}]: {out_str[:300]}")
+                    elif isinstance(val, str):
+                        lines.append(f"{key}: {val[:300]}")
+                return "\n".join(lines)
+
+            return (
+                "Multi-agent actions: run, run_team, list_teams, list_agents, stats"
+            )
+        except Exception as e:
+            return f"Multi-agent error: {e}"
 
     @register_tool("self_model_status")
     async def _tool_self_model_status(self, args):
